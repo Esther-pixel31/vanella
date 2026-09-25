@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from app.routes.customer import router as customer_router
 
 
 app = FastAPI(
@@ -7,6 +8,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.include_router(customer_router)
 
 @app.get("/")
 def root():
