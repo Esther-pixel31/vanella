@@ -8,8 +8,9 @@ import SplashScreen from './src/screens/auth/SplashScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
 import LoginScreen from './src/screens/auth/LoginScreen';
 import SignupScreen from './src/screens/auth/SignupScreen';
-
+import CartScreen from './src/screens/customer/orders/CartScreen';
 import CustomerHomeScreen from './src/screens/customer/home/CustomerHomeScreen';
+import OrdersScreen from './src/screens/customer/orders/OrdersScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -27,8 +28,9 @@ export default function App() {
           <Stack.Screen name="Welcome" component={WelcomeScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
-          
+          <Stack.Screen name="Cart" component={CartScreen}/>
           <Stack.Screen name="CustomerHome" component={CustomerHomeScreen} />
+          <Stack.Screen name="Orders" component={OrdersScreen}/>
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

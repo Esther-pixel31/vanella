@@ -452,8 +452,8 @@ function ProductCard({ product, onPress }) {
           accessibilityLabel={`${product.action}: ${product.name}`}
         >
           <Ionicons
-            name="cart"
-            size={14}
+            name="cart-outline"
+            size={18}
             color={COLORS.primary}
           />
 
@@ -653,17 +653,34 @@ function BottomNav({ activeTab, onTabPress }) {
 /* Screen                                                                     */
 /* -------------------------------------------------------------------------- */
 
-export default function CustomerHomeScreen() {
+export default function CustomerHomeScreen({navigation}) {
   const insets = useSafeAreaInsets();
 
   // TODO: wire these up to navigation / cart once those screens exist.
   const handleNotifications = () => {};
   const handleOrderNow = () => {};
-  const handleProductPress = (_product) => {};
+  const handleProductPress = (product) => { navigation.navigate('Cart'); };
   const handleViewAllProducts = () => {};
-  const handleViewAllOrders = () => {};
-  const handleTabPress = (_tabId) => {};
+  const handleViewAllOrders = () => { navigation.navigate('Orders'); };
+  const handleTabPress = (tab) => {
+    if (tab === 'home') {
+      return;
+    }
 
+    if (tab === 'orders') {
+      navigation.navigate('Orders');
+      return;
+    }
+
+    if (tab === 'rewards') {
+      console.log('Rewards screen coming next');
+      return;
+    }
+
+    if (tab === 'profile') {
+      console.log('Profile screen coming next');
+    }
+  };
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar style="dark" />
@@ -695,6 +712,7 @@ export default function CustomerHomeScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.productsRow}
+            nestedScrollEnabled
           >
             {PRODUCTS.map((product) => (
               <ProductCard
@@ -1206,102 +1224,80 @@ seeAllText: {
 },
 
 
-/* PRODUCT ROW */
-
 productsRow: {
-  width: '100%',
-
   flexDirection: 'row',
-  alignItems: 'stretch',
-
-  gap: 7,
+  gap: 12,
+  paddingRight: 24,
+  paddingBottom: 6,
 },
 
-
-/* PRODUCT CARD */
-
 productCard: {
-  width: 145,
-  height: 220,
+  width: 155,            // IMPORTANT for horizontal scrolling
+  height: 235,
 
   backgroundColor: '#FFFFFF',
-
   borderRadius: 16,
-
   overflow: 'hidden',
 
   ...shadow('#071F68', 0.08, 8, 3, 3),
 },
 
-/* PRODUCT IMAGE */
-
 productImageContainer: {
   width: '100%',
-  height: 100,
+  height: 110,
 
   alignItems: 'center',
   justifyContent: 'center',
 
-  paddingHorizontal: 6,
-  paddingTop: 5,
+  paddingHorizontal: 8,
+  paddingTop: 6,
 },
 
 productImage: {
-  width: '92%',
-  height: '92%',
+  width: '95%',
+  height: '95%',
 },
-
-
-/* PRODUCT INFORMATION */
 
 productInfo: {
   flex: 1,
-
-  paddingHorizontal: 8,
-  paddingBottom: 7,
+  paddingHorizontal: 10,
+  paddingBottom: 10,
 },
 
 productName: {
   color: COLORS.navy,
 
-  fontSize: 11,
-  lineHeight: 13,
+  fontSize: 16,          // LARGER
+  lineHeight: 19,
+  fontWeight: '900',     // THICKER
 
-  fontWeight: '800',
-
-  minHeight: 27,
+  minHeight: 38,
 },
 
 productPrice: {
   color: COLORS.primary,
 
-  fontSize: 11,
-  lineHeight: 15,
-
+  fontSize: 16,          // LARGER PRICE
+  lineHeight: 20,
   fontWeight: '900',
 
-  marginTop: 1,
+  marginTop: 2,
 },
 
+productButton: {
+  height: 34,
 
-/* PRODUCT BUTTON */
-
-  productButton: {
-  height: 30,
-
-  borderRadius: 16,
-
+  borderRadius: 18,
   backgroundColor: '#DCEEFF',
 
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
 
-  gap: 5,
+  gap: 6,
 
   marginTop: 'auto',
-
-  paddingHorizontal: 5,
+  paddingHorizontal: 8,
 },
 
 productButtonOutline: {
@@ -1312,10 +1308,9 @@ productButtonOutline: {
 productButtonText: {
   color: COLORS.primary,
 
-  fontSize: 9,
-  lineHeight: 11,
-
-  fontWeight: '800',
+  fontSize: 12,          // LARGER
+  lineHeight: 15,
+  fontWeight: '900',     // THICKER
 
   textAlign: 'center',
 },
@@ -1362,7 +1357,7 @@ cartBadge: {
 cartBadgeText: {
   color: '#FFFFFF',
 
-  fontSize: 9,
+  fontSize: 12,
   fontWeight: '900',
 },
   /* Recent order */
