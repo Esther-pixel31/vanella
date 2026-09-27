@@ -4,9 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.customer import CustomerResponse, CustomerUpdate
+from app.schemas.customer import (
+    CustomerCreate,
+    CustomerResponse,
+    CustomerUpdate,
+)
 from app.services.customer.customer_service import (
+    create_customer,
     get_customer,
+    get_customer_by_phone,
     update_customer,
 )
 
@@ -16,6 +22,31 @@ router = APIRouter(
     tags=["Customer Profile"],
 )
 
+@router.post(
+    "",
+    response_model=CustomerResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_customer(
+    data: CustomerCreate,
+    db: Session = Depends(get_db),
+):
+
+    existing = get_customer_by_phone(
+        db,
+        data.phone_number,
+    )
+
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A customer with this phone number is already registered",
+        )
+
+    return create_customer(
+        db,
+        data,
+    )
 
 @router.get(
     "/{customer_id}",

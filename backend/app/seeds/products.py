@@ -22,7 +22,7 @@ PRODUCTS = [
     {
         "name": "10,000L Bulk Water",
         "description": "10,000 litre bulk water delivery",
-        "price": Decimal("5000.00"),
+        "price": Decimal("5500.00"),
         "product_type": "10000L",
     },
 ]
