@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,18 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
+
+import { ApiError } from '../../../api/client';
+import { getHomeSummary } from '../../../api/home';
+import { getProducts } from '../../../api/products';
+import { useCart } from '../../../context/CartContext';
+import { toProductCard } from '../../../data/products';
+import {
+  formatKes,
+  formatOrderDate,
+  formatOrderRef,
+} from '../../../utils/format';
 
 /* -------------------------------------------------------------------------- */
 /* Theme                                                                      */
@@ -45,32 +58,14 @@ const shadow = (color, opacity, radius, offsetY, elevation) => ({
 /* Data                                                                       */
 /* -------------------------------------------------------------------------- */
 
-const formatKes = (amount) =>
-  `KES ${amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+const toRecentOrder = (order) => ({
+  id: formatOrderRef(order.id),
+  productName: order.product_name,
+  placedAt: formatOrderDate(order.placed_at),
+  status: order.status, // 'received' | 'ready' | 'delivered'
+});
 
-const PRODUCTS = [
-  {
-    id: '20l',
-    name: '20L Water',
-    price: 100,
-    image: require('../../../../assets/images/product-20l.png'),
-    action: 'Add to Order',
-  },
-  {
-    id: '6000l',
-    name: '6,000L\nBulk Water',
-    price: 3500,
-    image: require('../../../../assets/images/product-6000l.png'),
-    action: 'Order Now',
-  },
-  {
-    id: '10000l',
-    name: '10,000L\nBulk Water',
-    price: 5500,
-    image: require('../../../../assets/images/product-6000l.png'),
-    action: 'Order Now',
-  },
-];
+const firstName = (fullName) => fullName.trim().split(/\s+/)[0];
 
 const ORDER_STEPS = [
   { id: 'received', label: 'Order Received' },
@@ -82,23 +77,12 @@ const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: 'home-outline', activeIcon: 'home' },
   { id: 'orders', label: 'Orders', icon: 'receipt-outline', activeIcon: 'receipt' },
   { id: 'rewards', label: 'Rewards', icon: 'star-outline', activeIcon: 'star' },
+  { id: 'notifications', label: 'Alerts', icon: 'notifications-outline', activeIcon: 'notifications' },
   { id: 'profile', label: 'Profile', icon: 'person-outline', activeIcon: 'person' },
 ];
 
-// Temporary frontend demo data. Replace with backend data later.
-const DEMO_CUSTOMER = {
-  name: 'Esther',
-  loyaltyPoints: 20,
-  rewardTarget: 50,
-  hasUnreadNotifications: true,
-};
-
-const DEMO_ORDER = {
-  id: 'VW00123',
-  productName: '20L Water',
-  placedAt: 'Today, 2:30 PM',
-  status: 'ready', // 'received' | 'ready' | 'delivered'
-};
+// Points needed for the free 20L reward shown on the loyalty card.
+const REWARD_TARGET = 50;
 
 /* -------------------------------------------------------------------------- */
 /* Layout constants                                                           */
@@ -116,7 +100,7 @@ const REWARDS_BACKGROUND = require('../../../../assets/images/rewards-water.png'
 /* Components                                                                 */
 /* -------------------------------------------------------------------------- */
 
-function Header({ name, hasUnread, onNotificationsPress }) {
+function Header({ name, cartCount, onCartPress }) {
   return (
     <View style={styles.header}>
       <View>
@@ -125,16 +109,21 @@ function Header({ name, hasUnread, onNotificationsPress }) {
       </View>
 
       <TouchableOpacity
-        style={styles.notificationButton}
+        style={styles.headerCartButton}
         activeOpacity={0.8}
-        onPress={onNotificationsPress}
+        onPress={onCartPress}
         accessibilityRole="button"
         accessibilityLabel={
-          hasUnread ? 'Notifications, you have unread notifications' : 'Notifications'
+          cartCount > 0 ? `Cart, ${cartCount} items` : 'Cart'
         }
       >
-        <Ionicons name="notifications-outline" size={24} color={COLORS.textMuted} />
-        {hasUnread && <View style={styles.notificationDot} />}
+        <Ionicons name="cart-outline" size={25} color={COLORS.textMuted} />
+
+        {cartCount > 0 && (
+          <View style={styles.headerCartBadge}>
+            <Text style={styles.headerCartBadgeText}>{cartCount}</Text>
+          </View>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -608,7 +597,42 @@ function RecentOrder({ order }) {
   );
 }
 
-function BottomNav({ activeTab, onTabPress }) {
+function NoRecentOrder() {
+  return (
+    <View style={styles.recentOrder}>
+      <View style={styles.orderSummaryEmpty}>
+        <View style={styles.orderIconBox}>
+          <Ionicons name="water-outline" size={28} color={COLORS.primary} />
+        </View>
+
+        <View style={styles.orderEmptyText}>
+          <Text style={styles.orderProduct}>No orders yet</Text>
+          <Text style={styles.orderMeta}>Your latest order will appear here.</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function LoadError({ message, onRetry }) {
+  return (
+    <View style={styles.centered}>
+      <Ionicons name="cloud-offline-outline" size={44} color={COLORS.textSoft} />
+      <Text style={styles.loadErrorText}>{message}</Text>
+
+      <TouchableOpacity
+        style={styles.retryButton}
+        activeOpacity={0.85}
+        onPress={onRetry}
+        accessibilityRole="button"
+      >
+        <Text style={styles.retryButtonText}>Try Again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function BottomNav({ activeTab, hasUnread, onTabPress }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -634,11 +658,16 @@ function BottomNav({ activeTab, onTabPress }) {
             accessibilityLabel={item.label}
             accessibilityState={{ selected: isActive }}
           >
-            <Ionicons
-              name={isActive ? item.activeIcon : item.icon}
-              size={26}
-              color={color}
-            />
+            <View>
+              <Ionicons
+                name={isActive ? item.activeIcon : item.icon}
+                size={26}
+                color={color}
+              />
+              {item.id === 'notifications' && hasUnread && (
+                <View style={styles.navDot} />
+              )}
+            </View>
             <Text style={[styles.navText, { color }, isActive && styles.navTextActive]}>
               {item.label}
             </Text>
@@ -655,11 +684,54 @@ function BottomNav({ activeTab, onTabPress }) {
 
 export default function CustomerHomeScreen({navigation}) {
   const insets = useSafeAreaInsets();
+  const { addItem, items: cartItems } = useCart();
+
+  const cartCount = cartItems.reduce((count, item) => count + item.quantity, 0);
+
+  const [summary, setSummary] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [loadError, setLoadError] = useState('');
+
+  const loadHome = useCallback(async () => {
+    setLoadError('');
+
+    try {
+      const [summaryData, productData] = await Promise.all([
+        getHomeSummary(),
+        getProducts(),
+      ]);
+
+      setSummary(summaryData);
+      setProducts(productData.map(toProductCard));
+    } catch (err) {
+      // 401 here means the saved login could not be refreshed.
+      if (err instanceof ApiError && err.status === 401) {
+        navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+        return;
+      }
+
+      setLoadError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not reach the server. Check your connection and try again.'
+      );
+    }
+  }, [navigation]);
+
+  // Reload whenever the screen comes back into view, e.g. after an order.
+  useFocusEffect(
+    useCallback(() => {
+      loadHome();
+    }, [loadHome])
+  );
 
   // TODO: wire these up to navigation / cart once those screens exist.
-  const handleNotifications = () => {};
+  const handleCartPress = () => { navigation.navigate('Cart'); };
   const handleOrderNow = () => {};
-  const handleProductPress = (product) => { navigation.navigate('Cart'); };
+  const handleProductPress = (product) => {
+    addItem(product);
+    navigation.navigate('Cart');
+  };
   const handleViewAllProducts = () => {};
   const handleViewAllOrders = () => { navigation.navigate('Orders'); };
   const handleTabPress = (tab) => {
@@ -673,12 +745,17 @@ export default function CustomerHomeScreen({navigation}) {
     }
 
     if (tab === 'rewards') {
-      console.log('Rewards screen coming next');
+      navigation.navigate('Rewards');
+      return;
+    }
+
+    if (tab === 'notifications') {
+      navigation.navigate('Notifications');
       return;
     }
 
     if (tab === 'profile') {
-      console.log('Profile screen coming next');
+      navigation.navigate('Profile');
     }
   };
   return (
@@ -686,48 +763,64 @@ export default function CustomerHomeScreen({navigation}) {
       <StatusBar style="dark" />
 
       <View style={styles.screen}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: NAV_CONTENT_HEIGHT + insets.bottom + 24 },
-          ]}
-        >
-          <Header
-            name={DEMO_CUSTOMER.name}
-            hasUnread={DEMO_CUSTOMER.hasUnreadNotifications}
-            onNotificationsPress={handleNotifications}
-          />
-
-          <HeroCard onOrderPress={handleOrderNow} />
-
-          <LoyaltyCard
-            points={DEMO_CUSTOMER.loyaltyPoints}
-            target={DEMO_CUSTOMER.rewardTarget}
-            onViewRewardsPress={() => {}}
-          />
-
-          <SectionHeader title="Our Products" onViewAllPress={handleViewAllProducts} />
+        {summary ? (
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.productsRow}
-            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: NAV_CONTENT_HEIGHT + insets.bottom + 24 },
+            ]}
           >
-            {PRODUCTS.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onPress={handleProductPress}
-              />
-            ))}
+            <Header
+              name={firstName(summary.full_name)}
+              cartCount={cartCount}
+              onCartPress={handleCartPress}
+            />
+
+            <HeroCard onOrderPress={handleOrderNow} />
+
+            <LoyaltyCard
+              points={summary.points_balance}
+              target={REWARD_TARGET}
+              onViewRewardsPress={() => navigation.navigate('Rewards')}
+            />
+
+            <SectionHeader title="Our Products" onViewAllPress={handleViewAllProducts} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.productsRow}
+              nestedScrollEnabled
+            >
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onPress={handleProductPress}
+                />
+              ))}
+            </ScrollView>
+
+            <SectionHeader title="Recent Order" onViewAllPress={handleViewAllOrders} />
+            {summary.recent_order ? (
+              <RecentOrder order={toRecentOrder(summary.recent_order)} />
+            ) : (
+              <NoRecentOrder />
+            )}
           </ScrollView>
+        ) : loadError ? (
+          <LoadError message={loadError} onRetry={loadHome} />
+        ) : (
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+        )}
 
-          <SectionHeader title="Recent Order" onViewAllPress={handleViewAllOrders} />
-          <RecentOrder order={DEMO_ORDER} />
-        </ScrollView>
-
-        <BottomNav activeTab="home" onTabPress={handleTabPress} />
+        <BottomNav
+          activeTab="home"
+          hasUnread={Boolean(summary?.has_unread_notifications)}
+          onTabPress={handleTabPress}
+        />
       </View>
     </SafeAreaView>
   );
@@ -751,6 +844,36 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
 
+  /* Loading / error */
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: NAV_CONTENT_HEIGHT,
+  },
+  loadErrorText: {
+    color: COLORS.textMuted,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  retryButton: {
+    height: 46,
+    paddingHorizontal: 28,
+    borderRadius: 23,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
   /* Header */
   header: {
     flexDirection: 'row',
@@ -770,7 +893,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 3,
   },
-  notificationButton: {
+  headerCartButton: {
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -779,14 +902,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...shadow(COLORS.primary, 0.13, 10, 4, 4),
   },
-  notificationDot: {
+  headerCartBadge: {
     position: 'absolute',
-    right: 9,
-    top: 8,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    right: 4,
+    top: 4,
+    minWidth: 19,
+    height: 19,
+    borderRadius: 10,
+    paddingHorizontal: 5,
     backgroundColor: COLORS.alert,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCartBadgeText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '900',
   },
 
   /* HERO */
@@ -1371,6 +1502,13 @@ cartBadgeText: {
     alignItems: 'center',
     marginBottom: 18,
   },
+  orderSummaryEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  orderEmptyText: {
+    flex: 1,
+  },
   orderIconBox: {
     width: 54,
     height: 54,
@@ -1467,6 +1605,15 @@ cartBadgeText: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
+  },
+  navDot: {
+    position: 'absolute',
+    right: -1,
+    top: 0,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: COLORS.alert,
   },
   navText: {
     fontSize: 12,

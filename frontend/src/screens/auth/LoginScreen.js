@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -13,15 +14,41 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { requestOtp } from '../../api/auth';
+import { ApiError } from '../../api/client';
+
 export default function LoginScreen({ navigation }) {
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const phoneReady = phone.trim().length === 9;
 
-  const handleContinue = () => {
-    if (!phoneReady) return;
+  const handleContinue = async () => {
+    if (!phoneReady || loading) return;
 
-    navigation.navigate('CustomerHome');
+    // Backend expects the full number: country code, no + and no spaces.
+    const formattedPhone = `254${phone.trim()}`;
+
+    setError('');
+    setLoading(true);
+
+    try {
+      await requestOtp(formattedPhone);
+
+      navigation.navigate('OTP', {
+        mode: 'login',
+        phone: formattedPhone,
+      });
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -124,22 +151,34 @@ export default function LoginScreen({ navigation }) {
                 CONTINUE
             ========================== */}
 
+            {error ? (
+              <Text style={styles.errorText}>
+                {error}
+              </Text>
+            ) : null}
+
             <TouchableOpacity
               style={[
                 styles.continueButton,
-                !phoneReady && styles.continueDisabled,
+                (!phoneReady || loading) && styles.continueDisabled,
               ]}
-              disabled={!phoneReady}
+              disabled={!phoneReady || loading}
               activeOpacity={0.85}
               onPress={handleContinue}
             >
-              <Text style={styles.continueText}>
-                Continue
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.continueText}>
+                    Continue
+                  </Text>
 
-              <Text style={styles.continueArrow}>
-                →
-              </Text>
+                  <Text style={styles.continueArrow}>
+                    →
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
 
 
@@ -375,6 +414,20 @@ const styles = StyleSheet.create({
     color: '#0A315F',
 
     fontSize: 17,
+  },
+
+
+  /* =========================
+     ERROR
+  ========================== */
+
+  errorText: {
+    marginBottom: 10,
+
+    color: '#C62828',
+
+    fontSize: 14,
+    lineHeight: 20,
   },
 
 

@@ -75,6 +75,26 @@ def accrue_points_for_order(
     return account
 
 
+def accrue_points_for_saved_order(
+    db: Session,
+    order,
+) -> LoyaltyAccount:
+    """Awards points for an order that was saved without them (an M-Pesa
+    order that has now been paid, or one switched to cash)."""
+
+    # A free reward bottle is stored at zero price and earns no points.
+    paid_items = [
+        item for item in order.order_items if item.unit_price > 0
+    ]
+
+    return accrue_points_for_order(
+        db,
+        order.customer_id,
+        paid_items,
+        {item.product_id: item.product.product_type for item in paid_items},
+    )
+
+
 def get_available_rewards(
     db: Session,
     customer_id: UUID,

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -13,11 +14,16 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { requestOtp } from '../../api/auth';
+import { ApiError } from '../../api/client';
+
 export default function SignupScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [physicalAddress, setPhysicalAddress] = useState('');
   const [deliveryLocation, setDeliveryLocation] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const formComplete =
     fullName.trim().length > 0 &&
@@ -25,16 +31,41 @@ export default function SignupScreen({ navigation }) {
     physicalAddress.trim().length > 0 &&
     deliveryLocation.trim().length > 0;
 
-  const handleContinue = () => {
-    if (!formComplete) return;
+  const handleContinue = async () => {
+    if (!formComplete || loading) return;
 
-    navigation.navigate('OTP', {
-      mode: 'signup',
-      fullName,
-      phone,
-      physicalAddress,
-      deliveryLocation,
-    });
+    const localDigits = phone.replace(/\D/g, '');
+
+    if (localDigits.length !== 9) {
+      setError('Enter the 9 digits of your phone number after +254.');
+      return;
+    }
+
+    // Backend expects the full number: country code, no + and no spaces.
+    const formattedPhone = `254${localDigits}`;
+
+    setError('');
+    setLoading(true);
+
+    try {
+      await requestOtp(formattedPhone);
+
+      navigation.navigate('OTP', {
+        mode: 'signup',
+        fullName: fullName.trim(),
+        phone: formattedPhone,
+        physicalAddress: physicalAddress.trim(),
+        deliveryLocation: deliveryLocation.trim(),
+      });
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -198,24 +229,39 @@ export default function SignupScreen({ navigation }) {
             </View>
 
 
+            {/* ERROR */}
+
+            {error ? (
+              <Text style={styles.errorText}>
+                {error}
+              </Text>
+            ) : null}
+
+
             {/* CONTINUE */}
 
             <TouchableOpacity
               style={[
                 styles.continueButton,
-                !formComplete && styles.continueDisabled,
+                (!formComplete || loading) && styles.continueDisabled,
               ]}
-              disabled={!formComplete}
+              disabled={!formComplete || loading}
               activeOpacity={0.85}
               onPress={handleContinue}
             >
-              <Text style={styles.continueText}>
-                Continue
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.continueText}>
+                    Continue
+                  </Text>
 
-              <Text style={styles.continueArrow}>
-                →
-              </Text>
+                  <Text style={styles.continueArrow}>
+                    →
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
 
 
@@ -553,6 +599,20 @@ topWaterImage: {
     color: '#8098B5',
 
     fontSize: 18,
+  },
+
+
+  /* =========================
+     ERROR
+  ========================== */
+
+  errorText: {
+    marginBottom: 10,
+
+    color: '#C62828',
+
+    fontSize: 14,
+    lineHeight: 20,
   },
 
 

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from decimal import Decimal
 from uuid import UUID
 
@@ -28,6 +29,7 @@ class OrderCreate(BaseModel):
     customer_note: str | None = None
     items: list[OrderItemCreate]
     reward_id: UUID | None = None
+    payment_method: Literal["cash", "mpesa"] = "cash"
 
 
 class OrderResponse(BaseModel):
@@ -43,6 +45,8 @@ class OrderResponse(BaseModel):
     subtotal: Decimal
     delivery_fee: Decimal
     total: Decimal
+    payment_method: str
+    payment_status: str
     customer_note: str | None
     created_at: datetime
     updated_at: datetime

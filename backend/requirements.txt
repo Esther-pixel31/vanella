@@ -29,3 +29,4 @@ uvloop==0.22.1
 watchfiles==0.24.0
 websockets==13.1
 zipp==3.20.2
+python-jose==3.5.0

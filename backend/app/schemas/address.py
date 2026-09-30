@@ -25,6 +25,18 @@ class AddressCreate(BaseModel):
         max_length=255,
     )
 
+    latitude: float | None = Field(
+        default=None,
+        ge=-90,
+        le=90,
+    )
+
+    longitude: float | None = Field(
+        default=None,
+        ge=-180,
+        le=180,
+    )
+
     is_default: bool = False
 
 
@@ -64,6 +76,9 @@ class AddressResponse(BaseModel):
     address_line: str
     area: str | None
     delivery_instructions: str | None
+
+    latitude: float | None
+    longitude: float | None
 
     is_default: bool
     created_at: datetime

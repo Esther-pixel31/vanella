@@ -10,6 +10,8 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getRefreshToken } from '../../api/client';
+
 const { width, height } = Dimensions.get('window');
 
 const BLUE = '#008FD5';
@@ -479,8 +481,18 @@ export default function SplashScreen({ navigation }) {
 
     floatingLogo.start();
 
-    const timer = setTimeout(() => {
-      navigation.replace('Welcome');
+    const timer = setTimeout(async () => {
+      // A saved refresh token means the customer has logged in before.
+      // If it has expired, the home screen sends them back to Welcome.
+      let signedIn = false;
+
+      try {
+        signedIn = Boolean(await getRefreshToken());
+      } catch (err) {
+        // Treat an unreadable token store as signed out.
+      }
+
+      navigation.replace(signedIn ? 'CustomerHome' : 'Welcome');
     }, 4700);
 
     return () => {

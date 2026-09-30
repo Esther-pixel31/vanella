@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_customer_id
 from app.db.session import get_db
 from app.schemas.order import OrderCreate, OrderResponse
 from app.services.customer.order_service import (
@@ -19,13 +20,13 @@ router = APIRouter(
 
 
 @router.post(
-    "/{customer_id}",
+    "",
     response_model=OrderResponse,
     status_code=201,
 )
 def place_order(
-    customer_id: UUID,
     data: OrderCreate,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
     try:
@@ -42,11 +43,11 @@ def place_order(
 
 
 @router.get(
-    "/{customer_id}",
+    "",
     response_model=list[OrderResponse],
 )
 def list_orders(
-    customer_id: UUID,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
     return get_customer_orders(
@@ -56,14 +57,15 @@ def list_orders(
 
 
 @router.get(
-    "/{customer_id}/{order_id}",
+    "/{order_id}",
     response_model=OrderResponse,
 )
 def get_order(
-    customer_id: UUID,
     order_id: UUID,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
+
     order = get_customer_order(
         db,
         customer_id,

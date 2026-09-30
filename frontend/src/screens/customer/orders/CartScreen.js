@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 import {
   Image,
@@ -13,7 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import Svg, { Path } from 'react-native-svg';
+
+import { useCart } from '../../../context/CartContext';
+import { formatKes } from '../../../utils/format';
 
 
 const COLORS = {
@@ -30,80 +32,22 @@ const COLORS = {
 };
 
 
-const INITIAL_ITEMS = [
-  {
-    id: '20l',
-    name: '20L Water',
-    price: 100,
-    quantity: 2,
-    image: require('../../../../assets/images/product-20l.png'),
-  },
-  {
-    id: '6000l',
-    name: '6,000L\nBulk Water',
-    price: 3500,
-    quantity: 1,
-    image: require('../../../../assets/images/product-6000l.png'),
-  },
-  {
-    id: '10000l',
-    name: '10,000L\nBulk Water',
-    price: 5000,
-    quantity: 1,
-    image: require('../../../../assets/images/product-6000l.png'),
-  },
-];
-
-
-function formatKes(value) {
-  return `KES ${value.toLocaleString()}`;
-}
-
-
 export default function CartScreen({ navigation }) {
-  const [items, setItems] = useState(INITIAL_ITEMS);
-  const [note, setNote] = useState('');
+  const {
+    items,
+    note,
+    setNote,
+    increaseQuantity,
+    decreaseQuantity,
+    removeItem,
+    clear,
+    subtotal,
+  } = useCart();
 
+  // Vanella delivery is free.
+  const total = subtotal;
 
-  const increaseQuantity = (id) => {
-    setItems((current) =>
-      current.map((item) =>
-        item.id === id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      )
-    );
-  };
-
-
-  const decreaseQuantity = (id) => {
-    setItems((current) =>
-      current.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              quantity: Math.max(1, item.quantity - 1),
-            }
-          : item
-      )
-    );
-  };
-
-
-  const removeItem = (id) => {
-    setItems((current) =>
-      current.filter((item) => item.id !== id)
-    );
-  };
-
-
-  const subtotal = items.reduce(
-    (total, item) => total + item.price * item.quantity,
-    0
-  );
-
-  const deliveryFee = 0;
-  const total = subtotal + deliveryFee;
+  const cartEmpty = items.length === 0;
 
 
   return (
@@ -130,7 +74,7 @@ export default function CartScreen({ navigation }) {
 
         <TouchableOpacity
           style={styles.headerIcon}
-          onPress={() => setItems([])}
+          onPress={clear}
           activeOpacity={0.8}
         >
           <Ionicons
@@ -154,6 +98,36 @@ export default function CartScreen({ navigation }) {
         <Text style={styles.pageTitle}>
           Your Order
         </Text>
+
+
+        {/* EMPTY CART */}
+        {cartEmpty && (
+          <View style={styles.emptyCard}>
+            <Ionicons
+              name="cart-outline"
+              size={40}
+              color={COLORS.muted}
+            />
+
+            <Text style={styles.emptyTitle}>
+              Your order is empty
+            </Text>
+
+            <Text style={styles.emptyText}>
+              Add water from the home screen to get started.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.emptyButton}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('CustomerHome')}
+            >
+              <Text style={styles.emptyButtonText}>
+                Browse Products
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
 
         {/* ITEMS */}
@@ -309,16 +283,13 @@ export default function CartScreen({ navigation }) {
 
         {/* CHECKOUT */}
         <TouchableOpacity
-          style={styles.checkoutButton}
+          style={[
+            styles.checkoutButton,
+            cartEmpty && styles.checkoutButtonDisabled,
+          ]}
           activeOpacity={0.85}
-          onPress={() =>
-            navigation.navigate('Checkout', {
-              items,
-              subtotal,
-              total,
-              note,
-            })
-          }
+          disabled={cartEmpty}
+          onPress={() => navigation.navigate('Checkout')}
         >
           <Text style={styles.checkoutButtonText}>
             Proceed to Checkout
@@ -446,6 +417,64 @@ const styles = StyleSheet.create({
 
     marginTop: 8,
     marginBottom: 14,
+  },
+
+
+  /* EMPTY CART */
+
+  emptyCard: {
+    backgroundColor: COLORS.white,
+
+    borderRadius: 18,
+
+    alignItems: 'center',
+
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+
+    marginBottom: 12,
+  },
+
+  emptyTitle: {
+    color: COLORS.navy,
+
+    fontSize: 18,
+    fontWeight: '900',
+
+    marginTop: 10,
+  },
+
+  emptyText: {
+    color: COLORS.muted,
+
+    fontSize: 14,
+    lineHeight: 20,
+
+    textAlign: 'center',
+
+    marginTop: 5,
+  },
+
+  emptyButton: {
+    height: 44,
+
+    paddingHorizontal: 26,
+
+    borderRadius: 22,
+
+    backgroundColor: '#0966E8',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginTop: 16,
+  },
+
+  emptyButtonText: {
+    color: COLORS.white,
+
+    fontSize: 14,
+    fontWeight: '900',
   },
 
 
@@ -709,6 +738,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
 
     gap: 7,
+  },
+
+  checkoutButtonDisabled: {
+    backgroundColor: '#9DBFEF',
   },
 
   checkoutButtonText: {

@@ -11,4 +11,6 @@ class BranchResponse(BaseModel):
     id: UUID
     name: str
     location: str | None
+    latitude: float | None
+    longitude: float | None
     is_active: bool

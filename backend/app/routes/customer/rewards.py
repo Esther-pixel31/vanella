@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_customer_id
 from app.db.session import get_db
 from app.schemas.loyalty import (
     ClaimRewardRequest,
@@ -23,11 +24,11 @@ router = APIRouter(
 
 
 @router.get(
-    "/{customer_id}",
+    "",
     response_model=LoyaltySummaryResponse,
 )
 def get_rewards_summary(
-    customer_id: UUID,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
 
@@ -41,13 +42,13 @@ def get_rewards_summary(
 
 
 @router.post(
-    "/{customer_id}/claim",
+    "/claim",
     response_model=LoyaltyRewardResponse,
     status_code=201,
 )
 def claim(
-    customer_id: UUID,
     data: ClaimRewardRequest,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
 

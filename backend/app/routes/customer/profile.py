@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_customer_id
 from app.db.session import get_db
 from app.schemas.customer import (
     CustomerCreate,
@@ -21,6 +22,7 @@ router = APIRouter(
     prefix="/profile",
     tags=["Customer Profile"],
 )
+
 
 @router.post(
     "",
@@ -48,12 +50,13 @@ def register_customer(
         data,
     )
 
+
 @router.get(
-    "/{customer_id}",
+    "",
     response_model=CustomerResponse,
 )
 def read_profile(
-    customer_id: UUID,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
 
@@ -72,12 +75,12 @@ def read_profile(
 
 
 @router.patch(
-    "/{customer_id}",
+    "",
     response_model=CustomerResponse,
 )
 def edit_profile(
-    customer_id: UUID,
     data: CustomerUpdate,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
 

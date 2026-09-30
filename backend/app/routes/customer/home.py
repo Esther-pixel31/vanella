@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_customer_id
 from app.db.session import get_db
 from app.schemas.branch import BranchResponse
 from app.schemas.home import HomeSummaryResponse
@@ -27,11 +28,11 @@ def list_branches(
 
 
 @router.get(
-    "/summary/{customer_id}",
+    "/summary",
     response_model=HomeSummaryResponse,
 )
 def get_summary(
-    customer_id: UUID,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
 

@@ -126,11 +126,18 @@ def create_order(
     delivery_fee = Decimal("0")
     total = subtotal - discount_amount + delivery_fee
 
+    # M-Pesa orders earn their points only once the payment succeeds
+    # (see payment_service); cash orders earn them straight away.
+    pays_by_mpesa = data.payment_method == "mpesa"
+
     order = Order(
         customer_id=customer_id,
         branch_id=data.branch_id,
         address_id=data.address_id,
         customer_note=data.customer_note,
+        payment_method=data.payment_method,
+        payment_status="pending" if pays_by_mpesa else "unpaid",
+        points_awarded=not pays_by_mpesa,
         subtotal=subtotal,
         delivery_fee=delivery_fee,
         total=total,
@@ -144,12 +151,13 @@ def create_order(
         reward.status = "applied"
         reward.order_id = order.id
 
-    accrue_points_for_order(
-        db,
-        customer_id,
-        [order_item for order_item, _ in accrual_items],
-        {order_item.product_id: product_type for order_item, product_type in accrual_items},
-    )
+    if not pays_by_mpesa:
+        accrue_points_for_order(
+            db,
+            customer_id,
+            [order_item for order_item, _ in accrual_items],
+            {order_item.product_id: product_type for order_item, product_type in accrual_items},
+        )
 
     db.commit()
     db.refresh(order)

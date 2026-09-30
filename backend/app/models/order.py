@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -58,6 +58,28 @@ class Order(Base):
 
     total: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
+        nullable=False,
+    )
+
+    # "cash" (paid on delivery) or "mpesa" (paid at checkout)
+    payment_method: Mapped[str] = mapped_column(
+        String(10),
+        default="cash",
+        nullable=False,
+    )
+
+    # "unpaid", "pending", "paid" or "failed"
+    payment_status: Mapped[str] = mapped_column(
+        String(10),
+        default="unpaid",
+        nullable=False,
+    )
+
+    # Loyalty points are awarded once: at once for cash orders, and only
+    # after payment succeeds for M-Pesa orders.
+    points_awarded: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
         nullable=False,
     )
 

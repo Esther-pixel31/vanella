@@ -55,6 +55,8 @@ def create_address(
         address_line=data.address_line,
         area=data.area,
         delivery_instructions=data.delivery_instructions,
+        latitude=data.latitude,
+        longitude=data.longitude,
         is_default=data.is_default,
     )
 

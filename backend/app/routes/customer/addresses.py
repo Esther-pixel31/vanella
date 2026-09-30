@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_customer_id
 from app.db.session import get_db
 from app.schemas.address import (
     AddressCreate,
@@ -21,11 +22,11 @@ router = APIRouter(
 
 
 @router.get(
-    "/{customer_id}",
+    "",
     response_model=list[AddressResponse],
 )
 def list_addresses(
-    customer_id: UUID,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
     return get_customer_addresses(
@@ -35,13 +36,13 @@ def list_addresses(
 
 
 @router.post(
-    "/{customer_id}",
+    "",
     response_model=AddressResponse,
     status_code=201,
 )
 def add_address(
-    customer_id: UUID,
     data: AddressCreate,
+    customer_id: UUID = Depends(get_current_customer_id),
     db: Session = Depends(get_db),
 ):
     return create_address(
