@@ -55,6 +55,12 @@ class Payment(Base):
         nullable=False,
     )
 
+    # The PayBill the money was requested to (depends on the branch).
+    shortcode: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
     merchant_request_id: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,

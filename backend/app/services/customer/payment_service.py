@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.branch import Branch
 from app.models.order import Order
 from app.models.payment import Payment
 from app.services.customer.customer_service import get_customer
@@ -112,8 +113,18 @@ def start_mpesa_payment(
 
     reference = str(order.id)[:8].upper()
 
+    # Each branch is paid into its own PayBill.
+    branch = db.get(Branch, order.branch_id)
+    shortcode = mpesa_client.shortcode_for_branch(branch.name)
+
+    if not shortcode:
+        raise ValueError("M-Pesa payments are not set up for this branch yet")
+
+    print(f"[MPESA] Order {reference} ({branch.name}) -> PayBill {shortcode}")
+
     try:
         reply = mpesa_client.stk_push(
+            shortcode=shortcode,
             phone_number=phone_number,
             amount=amount,
             reference=reference,
@@ -131,6 +142,7 @@ def start_mpesa_payment(
         amount=amount,
         status="pending",
         phone_number=phone_number,
+        shortcode=shortcode,
         merchant_request_id=reply.get("MerchantRequestID"),
         checkout_request_id=reply.get("CheckoutRequestID"),
     )
@@ -209,7 +221,11 @@ def _refresh_pending(
         return payment
 
     try:
-        result = mpesa_client.stk_query(payment.checkout_request_id)
+        result = mpesa_client.stk_query(
+            # Older attempts were made before PayBills were per branch.
+            payment.shortcode or settings.MPESA_SHORTCODE,
+            payment.checkout_request_id,
+        )
     except MpesaError as error:
         print(f"[MPESA] Status query failed for payment {payment.id}: {error}")
         result = None

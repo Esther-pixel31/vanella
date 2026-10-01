@@ -31,6 +31,7 @@ def to_response(payment: Payment) -> PaymentResponse:
         amount=payment.amount,
         status=payment.status,
         phone_number=payment.phone_number,
+        shortcode=payment.shortcode,
         mpesa_receipt=payment.mpesa_receipt,
         message=payment_message(payment),
         created_at=payment.created_at,

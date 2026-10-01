@@ -33,8 +33,16 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    customer_id: UUID
-    is_new_customer: bool
+
+    # "customer", or a team role ("admin", "staff", "driver").
+    role: str = "customer"
+
+    # Set for customers.
+    customer_id: UUID | None = None
+    is_new_customer: bool = False
+
+    # Set for team users.
+    user_id: UUID | None = None
 
 
 class RefreshTokenRequest(BaseModel):

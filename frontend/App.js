@@ -3,6 +3,15 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import {
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from '@expo-google-fonts/plus-jakarta-sans';
+import { Pacifico_400Regular } from '@expo-google-fonts/pacifico';
 
 import SplashScreen from './src/screens/auth/SplashScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
@@ -22,6 +31,21 @@ import { CartProvider } from './src/context/CartContext';
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+    Pacifico_400Regular,
+  });
+
+  // Wait briefly for the fonts. If they fail to load, carry on with the
+  // system font rather than blocking the app.
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
   return (
     <SafeAreaProvider>
       <CartProvider>

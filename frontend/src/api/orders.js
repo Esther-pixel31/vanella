@@ -8,6 +8,16 @@ export function getOrder(orderId) {
   return apiRequest(`/api/customer/orders/${orderId}`);
 }
 
+// Live status, driver position and delivery code; polled while tracking.
+export function getOrderTracking(orderId) {
+  return apiRequest(`/api/customer/orders/${orderId}/tracking`);
+}
+
+// When an order placed now would arrive (for checkout).
+export function getDeliveryEstimate(hasBulk) {
+  return apiRequest(`/api/customer/orders/estimate?has_bulk=${hasBulk ? 'true' : 'false'}`);
+}
+
 // Only product ids and quantities are sent; the backend works out prices.
 export function createOrder({
   branchId,

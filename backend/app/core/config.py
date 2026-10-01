@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     MPESA_PASSKEY: str | None = None
     MPESA_CALLBACK_URL: str | None = None
 
+    # Which PayBill each branch's payments go to, as JSON keyed by the
+    # branch name, e.g. {"Bamburi": "123456", "Mombasa Town CBD": "654321"}.
+    # A branch missing here uses MPESA_SHORTCODE.
+    MPESA_BRANCH_SHORTCODES: dict[str, str] = {}
+
+    # Lipa Na M-Pesa passkey for each PayBill, as JSON keyed by PayBill,
+    # e.g. {"123456": "..."}. A PayBill missing here uses MPESA_PASSKEY.
+    MPESA_PASSKEYS: dict[str, str] = {}
+
     # Sandbox only: charge this many shillings instead of the order total,
     # because sandbox prompts reach real phones. Ignored when live.
     MPESA_SANDBOX_AMOUNT: int | None = 1

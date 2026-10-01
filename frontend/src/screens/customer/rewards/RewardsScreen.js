@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,36 +14,89 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
+import Svg, { Circle } from 'react-native-svg';
 
 import { ApiError } from '../../../api/client';
 import { claimReward, getRewards } from '../../../api/rewards';
 import BottomNav from '../../../components/BottomNav';
-import VanellaHeader from '../../../components/VanellaHeader';
 import {
+  ErrorState,
+  LoadingState,
+  ProgressBar,
+  ScreenTitle,
+  SectionTitle,
+} from '../../../components/ui';
+import { useCart } from '../../../context/CartContext';
+import {
+  FREE_20L,
   POINTS_PER_20L,
   POINTS_PER_BULK,
   REWARDS,
   getReward,
 } from '../../../data/rewards';
+import { COLORS, FONTS } from '../../../theme';
 
-
-const COLORS = {
-  primary: '#087FF5',
-  navy: '#052B6B',
-  background: '#F5F8FC',
-  white: '#FFFFFF',
-  text: '#082D6A',
-  muted: '#63738B',
-  track: '#DFE8F1',
-  success: '#19703A',
-  error: '#C62828',
-};
 
 const NETWORK_ERROR =
   'Could not reach the server. Check your connection and try again.';
 
+const IMAGE_20L = require('../../../../assets/images/product-20l.png');
+const IMAGE_BULK = require('../../../../assets/images/product-6000l.png');
 
-function RewardCard({
+const rewardImage = (type) => (type === FREE_20L ? IMAGE_20L : IMAGE_BULK);
+
+const RING_SIZE = 132;
+const RING_STROKE = 12;
+
+// Decorative water bubbles on the points card: [left, top, size, opacity].
+const BUBBLES = [
+  [250, -18, 70, 0.35],
+  [226, 64, 22, 0.45],
+  [272, 96, 12, 0.5],
+  [200, 18, 9, 0.5],
+];
+
+
+function PointsRing({ points, progress }) {
+  const radius = (RING_SIZE - RING_STROKE) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const filled = Math.max(0, Math.min(progress, 1)) * circumference;
+
+  return (
+    <View style={styles.ring}>
+      <Svg width={RING_SIZE} height={RING_SIZE}>
+        <Circle
+          cx={RING_SIZE / 2}
+          cy={RING_SIZE / 2}
+          r={radius}
+          stroke="rgba(255, 255, 255, 0.14)"
+          strokeWidth={RING_STROKE}
+          fill="none"
+        />
+        <Circle
+          cx={RING_SIZE / 2}
+          cy={RING_SIZE / 2}
+          r={radius}
+          stroke="#5FB4FF"
+          strokeWidth={RING_STROKE}
+          strokeLinecap="round"
+          strokeDasharray={`${filled} ${circumference}`}
+          fill="none"
+          transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+        />
+      </Svg>
+
+      <View style={styles.ringCenter}>
+        <Text style={styles.ringPoints}>{points}</Text>
+        <Text style={styles.ringLabel}>points</Text>
+      </View>
+    </View>
+  );
+}
+
+
+// A reward shown as a ticket: product photo, perforated edge, details.
+function RewardTicket({
   reward,
   points,
   confirming,
@@ -52,99 +106,109 @@ function RewardCard({
   onCancel,
 }) {
   const canClaim = points >= reward.cost;
-  const progress = Math.min(points / reward.cost, 1);
   const missing = reward.cost - points;
 
   return (
-    <View style={styles.card}>
+    <View style={styles.ticket}>
+      <View style={styles.ticketImageBox}>
+        <Image
+          source={rewardImage(reward.type)}
+          style={styles.ticketPhoto}
+          resizeMode="cover"
+        />
 
-      <View style={styles.rewardTopRow}>
-        <View style={styles.rewardIcon}>
-          <Ionicons name={reward.icon} size={22} color={COLORS.primary} />
-        </View>
-
-        <View style={styles.rewardText}>
-          <Text style={styles.rewardTitle}>
-            {reward.title}
-          </Text>
-
-          <Text style={styles.rewardDescription}>
-            {reward.description}
-          </Text>
-        </View>
-
-        <View style={styles.costPill}>
-          <Text style={styles.costText}>
-            {reward.cost} pts
-          </Text>
+        <View style={styles.costChip}>
+          <Text style={styles.costChipText}>{reward.cost} pts</Text>
         </View>
       </View>
 
+      {/* Notches that make the card look like a torn-off ticket. */}
+      <View style={[styles.notch, styles.notchTop]} />
+      <View style={[styles.notch, styles.notchBottom]} />
 
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-      </View>
+      <View style={styles.ticketBody}>
+        <Text style={styles.ticketTitle}>{reward.title}</Text>
+        <Text style={styles.ticketDescription}>{reward.description}</Text>
 
-      <Text style={styles.progressText}>
-        {canClaim
-          ? 'You have enough points for this reward.'
-          : `${missing} more points needed`}
-      </Text>
+        <View style={styles.ticketProgress}>
+          <ProgressBar
+            progress={points / reward.cost}
+            color={canClaim ? COLORS.ok : COLORS.royal}
+          />
+        </View>
 
+        {confirming ? (
+          <View style={styles.confirmRow}>
+            <Text style={styles.confirmText}>Use {reward.cost} pts?</Text>
 
-      {confirming ? (
-        <View>
-          <Text style={styles.confirmText}>
-            Use {reward.cost} points to claim this reward?
-          </Text>
-
-          <View style={styles.confirmButtons}>
             <TouchableOpacity
               style={styles.cancelButton}
-              activeOpacity={0.7}
-              disabled={claiming}
               onPress={onCancel}
+              disabled={claiming}
+              accessibilityRole="button"
             >
-              <Text style={styles.cancelButtonText}>
-                Cancel
-              </Text>
+              <Text style={styles.cancelText}>No</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.confirmButton}
-              activeOpacity={0.85}
-              disabled={claiming}
+              style={styles.claimButton}
               onPress={onConfirm}
+              disabled={claiming}
+              accessibilityRole="button"
+              accessibilityLabel={`Yes, claim ${reward.title}`}
             >
               {claiming ? (
-                <ActivityIndicator color={COLORS.white} />
+                <ActivityIndicator size="small" color={COLORS.surface} />
               ) : (
-                <Text style={styles.claimButtonText}>
-                  Yes, Claim
-                </Text>
+                <Text style={styles.claimText}>Yes</Text>
               )}
             </TouchableOpacity>
           </View>
-        </View>
-      ) : (
-        <TouchableOpacity
-          style={[styles.claimButton, !canClaim && styles.claimButtonDisabled]}
-          activeOpacity={0.85}
-          disabled={!canClaim}
-          onPress={onClaimPress}
-        >
-          <Text style={styles.claimButtonText}>
-            Claim Reward
-          </Text>
-        </TouchableOpacity>
-      )}
+        ) : (
+          <View style={styles.ticketFooter}>
+            <Text style={[styles.ticketStatus, canClaim && styles.ticketStatusReady]}>
+              {canClaim ? 'Ready to claim' : `${missing} points to go`}
+            </Text>
 
+            <TouchableOpacity
+              style={[styles.claimButton, !canClaim && styles.claimButtonDisabled]}
+              onPress={onClaimPress}
+              disabled={!canClaim}
+              accessibilityRole="button"
+              accessibilityLabel={`Claim ${reward.title}`}
+              accessibilityState={{ disabled: !canClaim }}
+            >
+              <Text style={[styles.claimText, !canClaim && styles.claimTextDisabled]}>
+                Claim
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+
+function EarnTile({ image, points, label }) {
+  return (
+    <View style={styles.earnTile}>
+      <View style={styles.earnImageBox}>
+        <Image source={image} style={styles.ticketImage} resizeMode="cover" />
+      </View>
+
+      <View>
+        <Text style={styles.earnPoints}>+{points}</Text>
+        <Text style={styles.earnLabel}>{label}</Text>
+      </View>
     </View>
   );
 }
 
 
 export default function RewardsScreen({ navigation }) {
+  const { items: cartItems } = useCart();
+
   const [summary, setSummary] = useState(null);
   const [loadError, setLoadError] = useState('');
 
@@ -206,75 +270,80 @@ export default function RewardsScreen({ navigation }) {
   };
 
 
-
   const renderContent = () => {
     if (summary === null) {
-      if (loadError) {
-        return (
-          <View style={styles.centered}>
-            <Ionicons
-              name="cloud-offline-outline"
-              size={44}
-              color={COLORS.muted}
-            />
-
-            <Text style={styles.centeredText}>
-              {loadError}
-            </Text>
-
-            <TouchableOpacity
-              style={styles.centeredButton}
-              activeOpacity={0.85}
-              onPress={loadRewards}
-            >
-              <Text style={styles.claimButtonText}>
-                Try Again
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-
-      return (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
+      return loadError ? (
+        <ErrorState message={loadError} onRetry={loadRewards} />
+      ) : (
+        <LoadingState />
       );
     }
 
     const points = summary.points_balance;
     const claimed = summary.available_rewards;
 
+    // The ring shows progress towards the cheapest reward still out of reach.
+    const nextReward = REWARDS.filter((reward) => reward.cost > points).sort(
+      (a, b) => a.cost - b.cost
+    )[0];
+    const claimableCount = REWARDS.filter((reward) => points >= reward.cost).length;
+
     return (
       <ScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
 
-        <Text style={styles.pageTitle}>
-          Rewards
-        </Text>
-
-
         {/* =====================================
-            POINTS BALANCE
+            POINTS
         ===================================== */}
 
-        <View style={styles.balanceCard}>
-          <View>
-            <Text style={styles.balanceLabel}>
-              YOUR POINTS
+        <View style={styles.pointsCard}>
+          {BUBBLES.map(([left, top, size, opacity], index) => (
+            <View
+              key={index}
+              style={[
+                styles.bubble,
+                {
+                  left,
+                  top,
+                  width: size,
+                  height: size,
+                  borderRadius: size / 2,
+                  borderColor: `rgba(143, 196, 255, ${opacity})`,
+                  backgroundColor: `rgba(143, 196, 255, ${opacity / 3})`,
+                },
+              ]}
+            />
+          ))}
+
+          <PointsRing
+            points={points}
+            progress={nextReward ? points / nextReward.cost : 1}
+          />
+
+          <View style={styles.pointsText}>
+            <Text style={styles.pointsEyebrow}>
+              {nextReward ? 'NEXT REWARD' : 'ALL UNLOCKED'}
             </Text>
 
-            <Text style={styles.balancePoints}>
-              {points}
-              <Text style={styles.balanceUnit}> PTS</Text>
+            <Text style={styles.pointsHeadline}>
+              {nextReward
+                ? `${nextReward.cost - points} points to ${nextReward.title.toLowerCase()}`
+                : 'You have enough points for every reward'}
             </Text>
-          </View>
 
-          <View style={styles.balanceIcon}>
-            <Ionicons name="trophy" size={28} color={COLORS.white} />
+            {claimableCount > 0 ? (
+              <View style={styles.claimChip}>
+                <Ionicons name="gift" size={14} color="#CFE6FF" />
+                <Text style={styles.claimChipText}>
+                  {claimableCount === 1
+                    ? '1 reward to claim'
+                    : `${claimableCount} rewards to claim`}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -285,110 +354,97 @@ export default function RewardsScreen({ navigation }) {
 
         {notice ? (
           <View style={styles.noticeBox}>
-            <Ionicons name="checkmark-circle" size={20} color="#19A65B" />
-
-            <Text style={styles.noticeText}>
-              {notice}
-            </Text>
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.ok} />
+            <Text style={styles.noticeText}>{notice}</Text>
           </View>
         ) : null}
 
-        {error ? (
-          <Text style={styles.errorText}>
-            {error}
-          </Text>
-        ) : null}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
 
         {/* =====================================
-            CLAIMED, READY TO USE
+            READY TO USE
         ===================================== */}
 
         {claimed.length > 0 ? (
-          <View>
-            <Text style={styles.sectionTitle}>
-              Ready to use
-            </Text>
+          <View style={styles.section}>
+            <SectionTitle title="Ready to use" />
 
-            {claimed.map((item) => {
-              const reward = getReward(item.reward_type);
+            <View style={styles.list}>
+              {claimed.map((item) => {
+                const reward = getReward(item.reward_type);
 
-              return (
-                <View key={item.id} style={styles.claimedRow}>
-                  <Ionicons name="gift" size={21} color="#19A65B" />
+                return (
+                  <View key={item.id} style={styles.coupon}>
+                    <View style={styles.couponIcon}>
+                      <Ionicons name="gift" size={20} color={COLORS.ok} />
+                    </View>
 
-                  <View style={styles.rewardText}>
-                    <Text style={styles.claimedTitle}>
-                      {reward ? reward.title : item.reward_type}
-                    </Text>
+                    <View style={styles.couponText}>
+                      <Text style={styles.couponTitle}>
+                        {reward ? reward.title : item.reward_type}
+                      </Text>
+                      <Text style={styles.couponSubtitle}>
+                        Claimed · add it at checkout
+                      </Text>
+                    </View>
 
-                    <Text style={styles.rewardDescription}>
-                      Choose it at checkout to use it.
-                    </Text>
+                    <TouchableOpacity
+                      style={styles.useButton}
+                      onPress={() =>
+                        navigation.navigate(cartItems.length > 0 ? 'Cart' : 'CustomerHome')
+                      }
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.useText}>Use now</Text>
+                    </TouchableOpacity>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
         ) : null}
 
 
         {/* =====================================
-            REWARDS TO CLAIM
+            CLAIM WITH POINTS
         ===================================== */}
 
-        <Text style={styles.sectionTitle}>
-          Claim with points
-        </Text>
+        <View style={styles.section}>
+          <SectionTitle title="Claim with points" />
 
-        {REWARDS.map((reward) => (
-          <RewardCard
-            key={reward.type}
-            reward={reward}
-            points={points}
-            confirming={confirmingType === reward.type}
-            claiming={claiming}
-            onClaimPress={() => {
-              setError('');
-              setNotice('');
-              setConfirmingType(reward.type);
-            }}
-            onConfirm={() => handleClaim(reward)}
-            onCancel={() => setConfirmingType(null)}
-          />
-        ))}
+          <View style={styles.list}>
+            {REWARDS.map((reward) => (
+              <RewardTicket
+                key={reward.type}
+                reward={reward}
+                points={points}
+                confirming={confirmingType === reward.type}
+                claiming={claiming}
+                onClaimPress={() => {
+                  setError('');
+                  setNotice('');
+                  setConfirmingType(reward.type);
+                }}
+                onConfirm={() => handleClaim(reward)}
+                onCancel={() => setConfirmingType(null)}
+              />
+            ))}
+          </View>
+        </View>
 
 
         {/* =====================================
-            HOW TO EARN
+            HOW YOU EARN
         ===================================== */}
 
-        <Text style={styles.sectionTitle}>
-          How you earn points
-        </Text>
-
-        <View style={styles.card}>
+        <View style={styles.section}>
+          <SectionTitle title="How you earn" />
 
           <View style={styles.earnRow}>
-            <Text style={styles.earnLabel}>
-              Each 20L Water
-            </Text>
-
-            <Text style={styles.earnValue}>
-              +{POINTS_PER_20L} pts
-            </Text>
+            <EarnTile image={IMAGE_20L} points={POINTS_PER_20L} label={'points per\n20L bottle'} />
+            <EarnTile image={IMAGE_BULK} points={POINTS_PER_BULK} label={'points per\nbulk order'} />
           </View>
-
-          <View style={[styles.earnRow, styles.earnRowLast]}>
-            <Text style={styles.earnLabel}>
-              Each 6,000L or 10,000L Bulk Water
-            </Text>
-
-            <Text style={styles.earnValue}>
-              +{POINTS_PER_BULK} pts
-            </Text>
-          </View>
-
         </View>
 
       </ScrollView>
@@ -398,499 +454,360 @@ export default function RewardsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      <VanellaHeader
-        onBack={() => navigation.goBack()}
-        pageBackground={COLORS.background}
-      />
+      <ScreenTitle title="Rewards" />
 
       {renderContent()}
 
-
       <BottomNav activeTab="rewards" navigation={navigation} />
-
     </SafeAreaView>
   );
 }
 
 
-/* =========================================
-   STYLES
-========================================= */
-
 const styles = StyleSheet.create({
-
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.ground,
   },
-
-
-  scrollView: {
+  scroll: {
     flex: 1,
   },
-
-
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 4,
-
-    paddingBottom: 25,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
-
-
-  pageTitle: {
-    color: COLORS.text,
-
-    fontSize: 29,
-    lineHeight: 35,
-
-    fontWeight: '900',
-
-    marginBottom: 17,
-  },
-
-
-  sectionTitle: {
-    color: COLORS.text,
-
-    fontSize: 18,
-    lineHeight: 23,
-
-    fontWeight: '900',
-
-    marginTop: 8,
-    marginBottom: 11,
-  },
-
-
-  /* =======================================
-     LOADING / ERROR
-  ======================================= */
-
-  centered: {
-    flex: 1,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    paddingHorizontal: 36,
-  },
-
-
-  centeredText: {
-    color: COLORS.muted,
-
-    fontSize: 15,
-    lineHeight: 22,
-
-    textAlign: 'center',
-
-    marginTop: 10,
-  },
-
-
-  centeredButton: {
-    height: 48,
-
-    paddingHorizontal: 30,
-
-    borderRadius: 24,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
+  section: {
     marginTop: 20,
   },
+  list: {
+    gap: 12,
+  },
 
-
-  /* =======================================
-     BALANCE
-  ======================================= */
-
-  balanceCard: {
-    backgroundColor: COLORS.navy,
-
-    borderRadius: 20,
-
+  /* Points card */
+  pointsCard: {
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-
-    paddingHorizontal: 22,
-    paddingVertical: 20,
-
-    marginBottom: 14,
+    gap: 18,
+    padding: 20,
+    borderRadius: 24,
+    backgroundColor: COLORS.deep,
   },
-
-
-  balanceLabel: {
-    color: '#BFDFFF',
-
-    fontSize: 12,
-    lineHeight: 16,
-
-    fontWeight: '900',
-
-    letterSpacing: 0.9,
+  bubble: {
+    position: 'absolute',
+    borderWidth: 1.5,
   },
-
-
-  balancePoints: {
-    color: COLORS.white,
-
-    fontSize: 40,
-    lineHeight: 46,
-
-    fontWeight: '900',
-
-    marginTop: 2,
+  ring: {
+    width: RING_SIZE,
+    height: RING_SIZE,
   },
-
-
-  balanceUnit: {
-    color: '#BFDFFF',
-
-    fontSize: 14,
-    fontWeight: '800',
-  },
-
-
-  balanceIcon: {
-    width: 58,
-    height: 58,
-
-    borderRadius: 29,
-
-    backgroundColor: COLORS.primary,
-
+  ringCenter: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-
-  /* =======================================
-     MESSAGES
-  ======================================= */
-
-  noticeBox: {
+  ringPoints: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 34,
+    letterSpacing: -1,
+  },
+  ringLabel: {
+    color: '#B9CCE8',
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+  },
+  pointsText: {
+    flex: 1,
+  },
+  pointsEyebrow: {
+    color: COLORS.sky,
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    letterSpacing: 1.4,
+  },
+  pointsHeadline: {
+    marginTop: 6,
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  claimChip: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    height: 28,
     flexDirection: 'row',
     alignItems: 'center',
-
-    gap: 9,
-
-    backgroundColor: '#DFF5E6',
-
+    gap: 6,
+    paddingHorizontal: 10,
     borderRadius: 14,
+    backgroundColor: 'rgba(95, 180, 255, 0.18)',
+  },
+  claimChipText: {
+    color: '#CFE6FF',
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+  },
 
+  /* Messages */
+  noticeBox: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
     paddingHorizontal: 14,
     paddingVertical: 12,
-
-    marginBottom: 12,
+    borderRadius: 14,
+    backgroundColor: COLORS.okBg,
   },
-
-
   noticeText: {
     flex: 1,
-
-    color: COLORS.success,
-
+    color: COLORS.ok,
+    fontFamily: FONTS.bold,
     fontSize: 14,
     lineHeight: 19,
-
-    fontWeight: '700',
   },
-
-
   errorText: {
-    color: COLORS.error,
-
-    fontSize: 14,
-    lineHeight: 20,
-
-    marginBottom: 12,
-  },
-
-
-  /* =======================================
-     CARDS
-  ======================================= */
-
-  card: {
-    backgroundColor: COLORS.white,
-
-    borderRadius: 18,
-
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-
-    marginBottom: 13,
-
-    shadowColor: '#163A6D',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-
-    elevation: 1,
-  },
-
-
-  claimedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-
-    backgroundColor: COLORS.white,
-
-    borderWidth: 1.4,
-    borderColor: '#BFE8CD',
-
-    borderRadius: 16,
-
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-
-    marginBottom: 10,
-  },
-
-
-  claimedTitle: {
-    color: COLORS.text,
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '900',
-  },
-
-
-  /* =======================================
-     REWARD CARD
-  ======================================= */
-
-  rewardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-
-
-  rewardIcon: {
-    width: 44,
-    height: 44,
-
-    borderRadius: 13,
-
-    backgroundColor: '#E4F1FF',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-
-  rewardText: {
-    flex: 1,
-
-    marginHorizontal: 12,
-  },
-
-
-  rewardTitle: {
-    color: COLORS.text,
-
-    fontSize: 16,
-    lineHeight: 21,
-
-    fontWeight: '900',
-  },
-
-
-  rewardDescription: {
-    color: COLORS.muted,
-
-    fontSize: 13,
-    lineHeight: 18,
-
-    marginTop: 2,
-  },
-
-
-  costPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-
-    borderRadius: 12,
-
-    backgroundColor: '#E4F1FF',
-  },
-
-
-  costText: {
-    color: '#0866DD',
-
-    fontSize: 12,
-    lineHeight: 16,
-
-    fontWeight: '900',
-  },
-
-
-  progressTrack: {
-    height: 7,
-
-    borderRadius: 4,
-
-    backgroundColor: COLORS.track,
-
-    overflow: 'hidden',
-
     marginTop: 14,
-  },
-
-
-  progressFill: {
-    height: '100%',
-
-    borderRadius: 4,
-
-    backgroundColor: COLORS.primary,
-  },
-
-
-  progressText: {
-    color: COLORS.muted,
-
-    fontSize: 13,
-    lineHeight: 18,
-
-    marginTop: 6,
-    marginBottom: 12,
-  },
-
-
-  claimButton: {
-    height: 46,
-
-    borderRadius: 23,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-
-  claimButtonDisabled: {
-    backgroundColor: '#9DBFEF',
-  },
-
-
-  claimButtonText: {
-    color: COLORS.white,
-
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-
-  confirmText: {
-    color: COLORS.text,
-
+    color: COLORS.red,
+    fontFamily: FONTS.semibold,
     fontSize: 14,
-    lineHeight: 19,
-
-    fontWeight: '800',
-
-    marginBottom: 10,
+    lineHeight: 20,
   },
 
-
-  confirmButtons: {
+  /* Ready-to-use coupon */
+  coupon: {
     flexDirection: 'row',
-
-    gap: 10,
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingLeft: 14,
+    paddingRight: 12,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#7CC79A',
+    backgroundColor: COLORS.okBg,
   },
-
-
-  cancelButton: {
-    flex: 1,
-    height: 46,
-
-    borderRadius: 23,
-
-    borderWidth: 1.4,
-    borderColor: '#C9D8E8',
-
+  couponIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-
-  cancelButtonText: {
-    color: '#0866DD',
-
+  couponText: {
+    flex: 1,
+  },
+  couponTitle: {
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
     fontSize: 15,
-    fontWeight: '800',
   },
-
-
-  confirmButton: {
-    flex: 1,
-    height: 46,
-
-    borderRadius: 23,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
+  couponSubtitle: {
+    marginTop: 1,
+    color: COLORS.ok,
+    fontFamily: FONTS.semibold,
+    fontSize: 12,
+  },
+  useButton: {
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: COLORS.ok,
     justifyContent: 'center',
   },
+  useText: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 13,
+  },
 
-
-  /* =======================================
-     HOW TO EARN
-  ======================================= */
-
-  earnRow: {
+  /* Ticket */
+  ticket: {
+    flexDirection: 'row',
+    minHeight: 150,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
+    overflow: 'hidden',
+  },
+  ticketImageBox: {
+    width: 100,
+    backgroundColor: COLORS.deep,
+  },
+  ticketImage: {
+    width: '100%',
+    height: '100%',
+  },
+  // Absolute, so the photo fills the box without setting the ticket's height.
+  ticketPhoto: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+  },
+  costChip: {
+    position: 'absolute',
+    left: 8,
+    top: 8,
+    height: 24,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(6, 18, 46, 0.75)',
+    justifyContent: 'center',
+  },
+  costChipText: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 11,
+  },
+  notch: {
+    position: 'absolute',
+    left: 89,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.ground,
+  },
+  notchTop: {
+    top: -11,
+  },
+  notchBottom: {
+    bottom: -11,
+  },
+  ticketBody: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingLeft: 18,
+    paddingRight: 14,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.line,
+    borderStyle: 'dashed',
+  },
+  ticketTitle: {
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 16,
+  },
+  ticketDescription: {
+    marginTop: 3,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  ticketProgress: {
+    marginTop: 'auto',
+    paddingTop: 10,
+  },
+  ticketFooter: {
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-
-    marginBottom: 12,
+    gap: 8,
   },
-
-
-  earnRowLast: {
-    marginBottom: 0,
-  },
-
-
-  earnLabel: {
+  ticketStatus: {
     flex: 1,
-
-    color: '#173B6D',
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '500',
-
-    marginRight: 10,
+    color: COLORS.muted,
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+  },
+  ticketStatusReady: {
+    color: COLORS.ok,
+  },
+  claimButton: {
+    height: 40,
+    minWidth: 64,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: COLORS.royal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  claimButtonDisabled: {
+    backgroundColor: COLORS.track,
+  },
+  claimText: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 13,
+  },
+  claimTextDisabled: {
+    color: COLORS.muted,
+  },
+  confirmRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  confirmText: {
+    flex: 1,
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 13,
+  },
+  cancelButton: {
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    justifyContent: 'center',
+  },
+  cancelText: {
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
+    fontSize: 13,
   },
 
-
-  earnValue: {
-    color: COLORS.primary,
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '900',
+  /* How you earn */
+  earnRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
-
-
+  earnTile: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
+  },
+  earnImageBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: COLORS.deep,
+  },
+  earnPoints: {
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
+    fontSize: 17,
+  },
+  earnLabel: {
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 11,
+    lineHeight: 14,
+  },
 });

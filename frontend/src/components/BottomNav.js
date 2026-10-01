@@ -2,6 +2,9 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { COLORS, FONTS } from '../theme';
 
 const TABS = [
   { id: 'home', label: 'Home', route: 'CustomerHome', icon: 'home-outline', activeIcon: 'home' },
@@ -14,10 +17,13 @@ const TABS = [
 // The bottom bar on the customer screens. `activeTab` is the id of the
 // tab the current screen belongs to. The home screen has its own copy.
 export default function BottomNav({ activeTab, navigation }) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, { paddingBottom: 8 + insets.bottom }]}>
       {TABS.map((tab) => {
         const active = tab.id === activeTab;
+        const color = active ? COLORS.royal : COLORS.muted;
 
         return (
           <TouchableOpacity
@@ -31,17 +37,23 @@ export default function BottomNav({ activeTab, navigation }) {
             accessibilityLabel={tab.label}
             accessibilityState={{ selected: active }}
           >
+            <View style={[styles.iconPill, active && styles.iconPillActive]}>
+              <Ionicons
+                name={active ? tab.activeIcon : tab.icon}
+                size={22}
+                color={color}
+              />
+            </View>
 
-            <Ionicons
-              name={active ? tab.activeIcon : tab.icon}
-              size={25}
-              color={active ? '#087FF5' : '#718198'}
-            />
-
-            <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+            <Text
+              style={[
+                styles.navLabel,
+                { color },
+                active && styles.navLabelActive,
+              ]}
+            >
               {tab.label}
             </Text>
-
           </TouchableOpacity>
         );
       })}
@@ -49,59 +61,36 @@ export default function BottomNav({ activeTab, navigation }) {
   );
 }
 
-
 const styles = StyleSheet.create({
-
   bottomNav: {
-    height: 82,
-
-    backgroundColor: '#FFFFFF',
-
-    borderTopWidth: 1,
-    borderTopColor: '#E6EDF5',
-
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-around',
-
-    paddingBottom: 5,
-
-    shadowColor: '#163A6D',
-    shadowOffset: {
-      width: 0,
-      height: -3,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-
-    elevation: 7,
+    paddingTop: 8,
+    paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
+    backgroundColor: COLORS.surface,
   },
-
-
   navItem: {
     flex: 1,
-
+    alignItems: 'center',
+    gap: 3,
+  },
+  iconPill: {
+    width: 56,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-
+  iconPillActive: {
+    backgroundColor: COLORS.tint,
+  },
   navLabel: {
-    color: '#667891',
-
-    fontSize: 12,
-    lineHeight: 16,
-
-    fontWeight: '500',
-
-    marginTop: 3,
+    fontFamily: FONTS.semibold,
+    fontSize: 11.5,
   },
-
-
   navLabelActive: {
-    color: '#087FF5',
-
-    fontWeight: '700',
+    fontFamily: FONTS.extrabold,
   },
-
 });

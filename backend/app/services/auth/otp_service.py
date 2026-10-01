@@ -15,6 +15,7 @@ from app.core.security import (
 from app.models.customer import Customer
 from app.models.otp import OtpRequest
 from app.models.refresh_token import RefreshToken
+from app.models.user import User
 from app.schemas.auth import TokenResponse, VerifyOtpRequest
 
 
@@ -45,15 +46,18 @@ def request_otp(
     print(f"[OTP STUB] Sending code {code} to {phone_number}")
 
 
-def verify_otp(
+def consume_otp(
     db: Session,
-    data: VerifyOtpRequest,
-) -> TokenResponse:
+    phone_number: str,
+    code: str,
+) -> None:
+    """Checks a code against the latest pending OTP for the number and
+    marks it used. Raises ValueError with a customer-facing message."""
 
     statement = (
         select(OtpRequest)
         .where(
-            OtpRequest.phone_number == data.phone_number,
+            OtpRequest.phone_number == phone_number,
             OtpRequest.is_used.is_(False),
         )
         .order_by(OtpRequest.created_at.desc())
@@ -70,13 +74,21 @@ def verify_otp(
     if otp_request.attempts >= MAX_OTP_ATTEMPTS:
         raise ValueError("Too many incorrect attempts. Please request a new OTP.")
 
-    if otp_request.code != data.code:
+    if otp_request.code != code:
         otp_request.attempts += 1
         db.commit()
         raise ValueError("Incorrect OTP code")
 
     otp_request.is_used = True
     db.commit()
+
+
+def verify_otp(
+    db: Session,
+    data: VerifyOtpRequest,
+) -> TokenResponse:
+
+    consume_otp(db, data.phone_number, data.code)
 
     customer = db.scalar(
         select(Customer).where(
@@ -142,6 +154,19 @@ def refresh_access_token(
 
     if refresh_token.expires_at < datetime.now(timezone.utc):
         raise ValueError("Refresh token has expired. Please log in again.")
+
+    if refresh_token.user_id is not None:
+        user = db.get(User, refresh_token.user_id)
+
+        if user is None or not user.is_active:
+            raise ValueError("This account is not active")
+
+        return TokenResponse(
+            access_token=create_access_token(user.id, user.role),
+            refresh_token=raw_refresh_token,
+            user_id=user.id,
+            role=user.role,
+        )
 
     access_token = create_access_token(refresh_token.customer_id)
 

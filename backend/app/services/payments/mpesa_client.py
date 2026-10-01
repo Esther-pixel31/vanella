@@ -21,6 +21,9 @@ REQUEST_TIMEOUT_SECONDS = 30
 # Daraja expects timestamps in Kenyan time (UTC+3).
 NAIROBI = timezone(timedelta(hours=3))
 
+# Status-query result codes meaning "the customer has not finished yet".
+STILL_PROCESSING_CODES = {"4999"}
+
 _token_cache = {"token": None, "expires_at": 0.0}
 
 
@@ -32,10 +35,29 @@ def is_configured() -> bool:
     return bool(
         settings.MPESA_CONSUMER_KEY
         and settings.MPESA_CONSUMER_SECRET
-        and settings.MPESA_SHORTCODE
-        and settings.MPESA_PASSKEY
         and settings.MPESA_CALLBACK_URL
     )
+
+
+def shortcode_for_branch(branch_name: str) -> str | None:
+    """The PayBill a branch's payments go to."""
+
+    return (
+        settings.MPESA_BRANCH_SHORTCODES.get(branch_name)
+        or settings.MPESA_SHORTCODE
+    )
+
+
+def _passkey_for(shortcode: str) -> str:
+    passkey = settings.MPESA_PASSKEYS.get(shortcode)
+
+    if passkey:
+        return passkey
+
+    if shortcode == settings.MPESA_SHORTCODE and settings.MPESA_PASSKEY:
+        return settings.MPESA_PASSKEY
+
+    raise MpesaError(f"No M-Pesa passkey is set for PayBill {shortcode}")
 
 
 def is_sandbox() -> bool:
@@ -118,10 +140,10 @@ def _access_token() -> str:
     return token
 
 
-def _password_and_timestamp() -> tuple[str, str]:
+def _password_and_timestamp(shortcode: str) -> tuple[str, str]:
     timestamp = datetime.now(NAIROBI).strftime("%Y%m%d%H%M%S")
 
-    raw = f"{settings.MPESA_SHORTCODE}{settings.MPESA_PASSKEY}{timestamp}"
+    raw = f"{shortcode}{_passkey_for(shortcode)}{timestamp}"
     password = base64.b64encode(raw.encode("utf-8")).decode("utf-8")
 
     return password, timestamp
@@ -135,31 +157,33 @@ def _auth_headers() -> dict:
 
 
 def stk_push(
+    shortcode: str,
     phone_number: str,
     amount: int,
     reference: str,
     description: str,
 ) -> dict:
-    """Sends the M-Pesa PIN prompt to the customer's phone.
+    """Sends the M-Pesa PIN prompt to the customer's phone, asking them
+    to pay into the PayBill `shortcode`.
 
     Returns Daraja's reply, which includes MerchantRequestID and
     CheckoutRequestID. Raises MpesaError if the prompt was not accepted.
     """
 
-    password, timestamp = _password_and_timestamp()
+    password, timestamp = _password_and_timestamp(shortcode)
 
     status, data = _request(
         "POST",
         "/mpesa/stkpush/v1/processrequest",
         _auth_headers(),
         {
-            "BusinessShortCode": settings.MPESA_SHORTCODE,
+            "BusinessShortCode": shortcode,
             "Password": password,
             "Timestamp": timestamp,
             "TransactionType": "CustomerPayBillOnline",
             "Amount": amount,
             "PartyA": phone_number,
-            "PartyB": settings.MPESA_SHORTCODE,
+            "PartyB": shortcode,
             "PhoneNumber": phone_number,
             "CallBackURL": settings.MPESA_CALLBACK_URL,
             "AccountReference": reference[:12],
@@ -178,21 +202,21 @@ def stk_push(
     return data
 
 
-def stk_query(checkout_request_id: str) -> dict | None:
-    """Asks Daraja what happened to a PIN prompt.
+def stk_query(shortcode: str, checkout_request_id: str) -> dict | None:
+    """Asks Daraja what happened to a PIN prompt sent for `shortcode`.
 
     Returns None while the customer has not finished (or Daraja cannot say
     yet); otherwise a dict with ResultCode ("0" means paid) and ResultDesc.
     """
 
-    password, timestamp = _password_and_timestamp()
+    password, timestamp = _password_and_timestamp(shortcode)
 
     status, data = _request(
         "POST",
         "/mpesa/stkpushquery/v1/query",
         _auth_headers(),
         {
-            "BusinessShortCode": settings.MPESA_SHORTCODE,
+            "BusinessShortCode": shortcode,
             "Password": password,
             "Timestamp": timestamp,
             "CheckoutRequestID": checkout_request_id,
@@ -200,6 +224,11 @@ def stk_query(checkout_request_id: str) -> dict | None:
     )
 
     if status != 200 or "ResultCode" not in data:
+        return None
+
+    # Daraja also answers "still processing" with a normal-looking result
+    # code while the prompt is open on the phone. That is not an outcome.
+    if str(data["ResultCode"]) in STILL_PROCESSING_CODES:
         return None
 
     return data

@@ -1,7 +1,6 @@
 import React, { useCallback, useState } from 'react';
 
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,7 +17,17 @@ import { ApiError } from '../../../api/client';
 import { getOrders } from '../../../api/orders';
 import { getProducts } from '../../../api/products';
 import BottomNav from '../../../components/BottomNav';
-import VanellaHeader from '../../../components/VanellaHeader';
+import {
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  MpesaMark,
+  ORDER_STATUS_TONES,
+  Pill,
+  ScreenTitle,
+} from '../../../components/ui';
+import { COLORS, FONTS } from '../../../theme';
 import {
   formatKes,
   formatOrderDate,
@@ -26,130 +35,82 @@ import {
 } from '../../../utils/format';
 
 
-const COLORS = {
-  primary: '#087FF5',
-  background: '#F5F8FC',
-  white: '#FFFFFF',
-  text: '#082D6A',
-  muted: '#63738B',
-  border: '#E5EDF6',
-};
+const ACTIVE = 'active';
+const PAST = 'past';
 
+// An M-Pesa order is not confirmed until it has been paid for.
+const isAwaitingPayment = (order) =>
+  order.payment_method === 'mpesa' && order.payment_status !== 'paid';
 
-// Backend status text -> pill colours.
-const STATUS_STYLES = {
-  'Order Received': { background: '#E4F1FF', text: '#0866DD' },
-  'Ready to Deliver': { background: '#FFF1D6', text: '#9A5B00' },
-  Delivered: { background: '#DFF5E6', text: '#19703A' },
-};
-
-const DEFAULT_STATUS_STYLE = { background: '#EEF2F7', text: '#63738B' };
-const AWAITING_PAYMENT_STYLE = { background: '#FDE3E3', text: '#B42318' };
+const isPast = (order) => order.status === 'Delivered';
 
 
 function OrderCard({ order, productNames, onPress }) {
-  // An M-Pesa order is not confirmed until it has been paid for.
-  const awaitingPayment =
-    order.payment_method === 'mpesa' && order.payment_status !== 'paid';
-
-  const statusStyle = awaitingPayment
-    ? AWAITING_PAYMENT_STYLE
-    : STATUS_STYLES[order.status] || DEFAULT_STATUS_STYLE;
+  const awaitingPayment = isAwaitingPayment(order);
 
   // A reward can make the total lower than the subtotal.
   const discount = Number(order.subtotal) - Number(order.total);
 
+  const items = order.order_items
+    .map((item) => {
+      const name = productNames[item.product_id] || 'Water';
+      const free = Number(item.line_total) === 0 ? ' (free)' : '';
+
+      return `${item.quantity} × ${name}${free}`;
+    })
+    .join('\n');
+
+  let actionLabel = 'Track order';
+
+  if (order.status === 'Delivered') actionLabel = 'View order';
+
   return (
-    <TouchableOpacity
-      style={styles.orderCard}
-      activeOpacity={0.85}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Track order ${formatOrderRef(order.id)}`}
-    >
-
-      <View style={styles.orderTopRow}>
-        <View>
-          <Text style={styles.orderRef}>
-            Order #{formatOrderRef(order.id)}
-          </Text>
-
-          <Text style={styles.orderDate}>
-            {formatOrderDate(order.created_at)}
-          </Text>
-        </View>
-
-        <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: statusStyle.background },
-          ]}
-        >
-          <Text style={[styles.statusText, { color: statusStyle.text }]}>
-            {awaitingPayment ? 'Awaiting payment' : order.status}
-          </Text>
-        </View>
-      </View>
-
-
-      <View style={styles.divider} />
-
-
-      {order.order_items.map((item) => {
-        const isFree = Number(item.line_total) === 0;
-
-        return (
-          <View key={item.id} style={styles.itemRow}>
-            <Text style={styles.itemName}>
-              {item.quantity} × {productNames[item.product_id] || 'Water'}
-            </Text>
-
-            <Text style={isFree ? styles.itemFree : styles.itemTotal}>
-              {isFree ? 'FREE' : formatKes(item.line_total)}
-            </Text>
+    <Card>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`Order ${formatOrderRef(order.id)}`}
+      >
+        <View style={styles.cardTopRow}>
+          <View>
+            <Text style={styles.orderRef}>Order #{formatOrderRef(order.id)}</Text>
+            <Text style={styles.orderDate}>{formatOrderDate(order.created_at)}</Text>
           </View>
-        );
-      })}
 
-
-      <View style={styles.divider} />
-
-
-      {discount > 0 && (
-        <View style={styles.itemRow}>
-          <Text style={styles.itemName}>
-            Reward discount
-          </Text>
-
-          <Text style={styles.itemFree}>
-            −{formatKes(discount)}
-          </Text>
+          {awaitingPayment ? (
+            <Pill label="Awaiting payment" tone="red" />
+          ) : (
+            <Pill
+              label={order.status}
+              tone={ORDER_STATUS_TONES[order.status] || 'neutral'}
+            />
+          )}
         </View>
-      )}
 
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>
-          Total
-        </Text>
+        <Text style={styles.items}>{items}</Text>
 
-        <Text style={styles.totalAmount}>
-          {formatKes(order.total)}
-        </Text>
-      </View>
+        {discount > 0 ? (
+          <Text style={styles.discount}>Reward discount −{formatKes(discount)}</Text>
+        ) : null}
 
-      <View style={styles.trackRow}>
-        <Text style={styles.trackText}>
-          {awaitingPayment
-            ? 'Complete payment'
-            : order.status === 'Delivered'
-              ? 'View order'
-              : 'Track order'}
-        </Text>
+        <View style={styles.cardBottomRow}>
+          <Text style={styles.total}>{formatKes(order.total)}</Text>
 
-        <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
-      </View>
-
-    </TouchableOpacity>
+          {awaitingPayment ? (
+            <View style={styles.payButton}>
+              <MpesaMark width={40} height={28} />
+              <Text style={styles.payButtonText}>Pay now</Text>
+            </View>
+          ) : (
+            <View style={styles.trackLink}>
+              <Text style={styles.trackText}>{actionLabel}</Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.royal} />
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Card>
   );
 }
 
@@ -158,6 +119,7 @@ export default function OrdersScreen({ navigation }) {
   const [orders, setOrders] = useState(null);
   const [productNames, setProductNames] = useState({});
   const [loadError, setLoadError] = useState('');
+  const [filter, setFilter] = useState(ACTIVE);
 
 
   const loadOrders = useCallback(async () => {
@@ -202,84 +164,44 @@ export default function OrdersScreen({ navigation }) {
   );
 
 
-
   const renderContent = () => {
     if (orders === null) {
-      if (loadError) {
-        return (
-          <View style={styles.centered}>
-            <Ionicons
-              name="cloud-offline-outline"
-              size={44}
-              color={COLORS.muted}
-            />
-
-            <Text style={styles.centeredText}>
-              {loadError}
-            </Text>
-
-            <TouchableOpacity
-              style={styles.centeredButton}
-              activeOpacity={0.85}
-              onPress={loadOrders}
-            >
-              <Text style={styles.centeredButtonText}>
-                Try Again
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-
-      return (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
+      return loadError ? (
+        <ErrorState message={loadError} onRetry={loadOrders} />
+      ) : (
+        <LoadingState />
       );
     }
 
-    if (orders.length === 0) {
-      return (
-        <View style={styles.centered}>
-          <Ionicons
-            name="receipt-outline"
-            size={48}
-            color={COLORS.muted}
-          />
+    const shown = orders.filter((order) =>
+      filter === PAST ? isPast(order) : !isPast(order)
+    );
 
-          <Text style={styles.centeredTitle}>
-            No orders yet
-          </Text>
-
-          <Text style={styles.centeredText}>
-            When you place an order, it will appear here.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.centeredButton}
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('CustomerHome')}
-          >
-            <Text style={styles.centeredButtonText}>
-              Order Water
-            </Text>
-          </TouchableOpacity>
-        </View>
+    if (shown.length === 0) {
+      return filter === PAST ? (
+        <EmptyState
+          icon="receipt-outline"
+          title="No past orders yet"
+          text="Delivered orders will appear here."
+        />
+      ) : (
+        <EmptyState
+          icon="receipt-outline"
+          title="No active orders"
+          text="When you place an order, you can follow it here."
+          actionLabel="Order water"
+          onAction={() => navigation.navigate('CustomerHome')}
+        />
       );
     }
 
     return (
       <ScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-
-        <Text style={styles.pageTitle}>
-          Your Orders
-        </Text>
-
-        {orders.map((order) => (
+        {shown.map((order) => (
           <OrderCard
             key={order.id}
             order={order}
@@ -289,7 +211,6 @@ export default function OrdersScreen({ navigation }) {
             }
           />
         ))}
-
       </ScrollView>
     );
   };
@@ -297,293 +218,147 @@ export default function OrdersScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      <VanellaHeader
-        onBack={() => navigation.goBack()}
-        pageBackground={COLORS.background}
-      />
+      <ScreenTitle title="Orders" />
+
+      <View style={styles.tabs} accessibilityRole="tablist">
+        {[
+          [ACTIVE, 'Active'],
+          [PAST, 'Past'],
+        ].map(([id, label]) => {
+          const selected = filter === id;
+
+          return (
+            <TouchableOpacity
+              key={id}
+              style={[styles.tab, selected && styles.tabSelected]}
+              onPress={() => setFilter(id)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.tabText, selected && styles.tabTextSelected]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {renderContent()}
 
-
       <BottomNav activeTab="orders" navigation={navigation} />
-
     </SafeAreaView>
   );
 }
 
 
-/* =========================================
-   STYLES
-========================================= */
-
 const styles = StyleSheet.create({
-
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.ground,
   },
-
-
-  /* =======================================
-     MAIN CONTENT
-  ======================================= */
-
-  scrollView: {
-    flex: 1,
-  },
-
-
-  scrollContent: {
+  tabs: {
+    flexDirection: 'row',
+    gap: 8,
     paddingHorizontal: 20,
-    paddingTop: 4,
-
-    paddingBottom: 25,
+    paddingTop: 6,
+    paddingBottom: 12,
   },
-
-
-  pageTitle: {
-    color: COLORS.text,
-
-    fontSize: 29,
-    lineHeight: 35,
-
-    fontWeight: '900',
-
-    marginBottom: 17,
+  tab: {
+    height: 36,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
   },
-
-
-  /* =======================================
-     LOADING / EMPTY / ERROR
-  ======================================= */
-
-  centered: {
+  tabSelected: {
+    borderColor: COLORS.ink,
+    backgroundColor: COLORS.ink,
+  },
+  tabText: {
+    color: COLORS.ink,
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+  },
+  tabTextSelected: {
+    color: COLORS.surface,
+  },
+  scroll: {
     flex: 1,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    paddingHorizontal: 36,
   },
-
-
-  centeredTitle: {
-    color: COLORS.text,
-
-    fontSize: 21,
-    lineHeight: 26,
-
-    fontWeight: '900',
-
-    marginTop: 12,
+  scrollContent: {
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 2,
+    paddingBottom: 24,
   },
-
-
-  centeredText: {
-    color: COLORS.muted,
-
-    fontSize: 15,
-    lineHeight: 22,
-
-    textAlign: 'center',
-
-    marginTop: 6,
-  },
-
-
-  centeredButton: {
-    height: 48,
-
-    paddingHorizontal: 30,
-
-    borderRadius: 24,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginTop: 20,
-  },
-
-
-  centeredButtonText: {
-    color: COLORS.white,
-
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-
-  /* =======================================
-     ORDER CARD
-  ======================================= */
-
-  orderCard: {
-    backgroundColor: COLORS.white,
-
-    borderRadius: 19,
-
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-
-    marginBottom: 12,
-
-    shadowColor: '#163A6D',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-
-    elevation: 2,
-  },
-
-
-  orderTopRow: {
+  cardTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: 10,
   },
-
-
   orderRef: {
-    color: COLORS.text,
-
-    fontSize: 16,
-    lineHeight: 20,
-
-    fontWeight: '900',
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 15,
   },
-
-
   orderDate: {
-    color: COLORS.muted,
-
-    fontSize: 13,
-    lineHeight: 18,
-
     marginTop: 2,
-  },
-
-
-  statusPill: {
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-
-    borderRadius: 13,
-  },
-
-
-  statusText: {
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
     fontSize: 12,
-    lineHeight: 16,
-
-    fontWeight: '800',
   },
-
-
-  divider: {
-    height: 1,
-
-    backgroundColor: '#E1E9F2',
-
-    marginVertical: 12,
-  },
-
-
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-
-    marginBottom: 6,
-  },
-
-
-  itemName: {
-    flex: 1,
-
-    color: '#173B6D',
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '500',
-
-    marginRight: 10,
-  },
-
-
-  itemTotal: {
-    color: COLORS.text,
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '800',
-  },
-
-
-  itemFree: {
-    color: COLORS.primary,
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '900',
-  },
-
-
-  totalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-
-  totalLabel: {
-    color: COLORS.text,
-
-    fontSize: 17,
-    lineHeight: 22,
-
-    fontWeight: '900',
-  },
-
-
-  totalAmount: {
-    color: '#0864D9',
-
-    fontSize: 20,
-    lineHeight: 25,
-
-    fontWeight: '900',
-  },
-
-
-  trackRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-
-    gap: 2,
-
-    marginTop: 10,
-  },
-
-
-  trackText: {
-    color: COLORS.primary,
-
+  items: {
+    marginTop: 12,
+    color: COLORS.ink,
+    fontFamily: FONTS.medium,
     fontSize: 14,
-    lineHeight: 18,
-
-    fontWeight: '800',
+    lineHeight: 21,
   },
-
-
+  discount: {
+    marginTop: 4,
+    color: COLORS.ok,
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+  },
+  cardBottomRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  total: {
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
+    fontSize: 17,
+  },
+  payButton: {
+    height: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 6,
+    paddingRight: 14,
+    borderRadius: 20,
+    backgroundColor: COLORS.royal,
+  },
+  payButtonText: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 13,
+  },
+  trackLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  trackText: {
+    color: COLORS.royal,
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+  },
 });

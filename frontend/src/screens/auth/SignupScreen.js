@@ -1,21 +1,36 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 
 import { requestOtp } from '../../api/auth';
 import { ApiError } from '../../api/client';
+import AuthBrandPanel from '../../components/AuthBrandPanel';
+import FormField from '../../components/FormField';
+import PrimaryButton from '../../components/PrimaryButton';
+import { COLORS, FONTS } from '../../theme';
+import {
+  LOCATION_DENIED,
+  LOCATION_OFF,
+  LocationError,
+  detectLocation,
+} from '../../utils/location';
+
+const LOCATION_ERRORS = {
+  [LOCATION_DENIED]: 'Location access is off for this app. Type your delivery location instead.',
+  [LOCATION_OFF]: 'Location (GPS) is turned off on your phone. Turn it on or type your delivery location.',
+};
 
 export default function SignupScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
@@ -25,11 +40,48 @@ export default function SignupScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Set when the delivery location came from the phone's GPS; cleared if
+  // the customer then types something else.
+  const [deliveryCoords, setDeliveryCoords] = useState(null);
+  const [locating, setLocating] = useState(false);
+  const [locationMessage, setLocationMessage] = useState('');
+
   const formComplete =
     fullName.trim().length > 0 &&
     phone.trim().length > 0 &&
     physicalAddress.trim().length > 0 &&
     deliveryLocation.trim().length > 0;
+
+  const handleUseLocation = async () => {
+    if (locating) return;
+
+    setLocationMessage('');
+    setLocating(true);
+
+    try {
+      const found = await detectLocation();
+
+      setDeliveryCoords({
+        latitude: found.latitude,
+        longitude: found.longitude,
+      });
+
+      if (found.addressText) {
+        setDeliveryLocation(found.addressText);
+      } else {
+        setLocationMessage(
+          'We found your location but not a place name. Add your estate, building or landmark.'
+        );
+      }
+    } catch (err) {
+      setLocationMessage(
+        (err instanceof LocationError && LOCATION_ERRORS[err.reason]) ||
+          'Could not find your location. Type your delivery location instead.'
+      );
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const handleContinue = async () => {
     if (!formComplete || loading) return;
@@ -56,6 +108,7 @@ export default function SignupScreen({ navigation }) {
         phone: formattedPhone,
         physicalAddress: physicalAddress.trim(),
         deliveryLocation: deliveryLocation.trim(),
+        deliveryCoords,
       });
     } catch (err) {
       setError(
@@ -68,8 +121,30 @@ export default function SignupScreen({ navigation }) {
     }
   };
 
+  const useLocationButton = (
+    <TouchableOpacity
+      style={styles.locationButton}
+      onPress={handleUseLocation}
+      disabled={locating}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel="Use my current location"
+    >
+      {locating ? (
+        <ActivityIndicator size="small" color={COLORS.royal} />
+      ) : (
+        <>
+          <Ionicons name="location" size={15} color={COLORS.royal} />
+          <Text style={styles.locationButtonText}>Use my location</Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <StatusBar style="light" />
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -79,645 +154,168 @@ export default function SignupScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-
-          {/* =========================
-              TOP WATER
-          ========================== */}
-
-          <View style={styles.topSection}>
-            <Image
-                source={require('../../../assets/images/signup-water-top.png')}
-                style={styles.topWaterImage}
-                resizeMode="stretch"
-            />
-
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.backArrow}>‹</Text>
-            </TouchableOpacity>
-          </View>
-
-
-          {/* =========================
-              FORM CONTENT
-          ========================== */}
+          <AuthBrandPanel height={170} onBack={() => navigation.goBack()} />
 
           <View style={styles.content}>
-
-            <Text style={styles.title}>
-              Create your account
-            </Text>
+            <Text style={styles.title}>Create your account</Text>
 
             <Text style={styles.subtitle}>
-              Order clean water and earn rewards{'\n'}
-              with every purchase.
+              Order clean water and earn rewards with every purchase.
             </Text>
 
+            <FormField
+              label="Full name"
+              value={fullName}
+              onChangeText={setFullName}
+              placeholder="Your full name"
+              autoCapitalize="words"
+              style={styles.field}
+            />
 
-            {/* FULL NAME */}
+            <FormField
+              label="Phone number"
+              prefix="+254"
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="7XX XXX XXX"
+              keyboardType="phone-pad"
+              maxLength={9}
+              style={styles.field}
+            />
 
-            <View style={styles.field}>
-              <Text style={styles.label}>
-                Full Name
-              </Text>
+            <FormField
+              label="Physical address"
+              value={physicalAddress}
+              onChangeText={setPhysicalAddress}
+              placeholder="e.g. Bamburi, Mombasa"
+              style={styles.field}
+            />
 
-              <View style={styles.inputContainer}>
-                <View style={styles.personIcon}>
-                  <View style={styles.personHead} />
-                  <View style={styles.personBody} />
-                </View>
+            <FormField
+              label="Delivery location"
+              value={deliveryLocation}
+              onChangeText={(value) => {
+                setDeliveryLocation(value);
+                setDeliveryCoords(null);
+              }}
+              placeholder="Estate, building or landmark"
+              trailing={useLocationButton}
+              style={styles.field}
+            />
 
-                <TextInput
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="Enter your full name"
-                  placeholderTextColor="#8DA5C2"
-                  autoCapitalize="words"
-                  style={styles.input}
-                />
-              </View>
-            </View>
-
-
-            {/* PHONE */}
-
-            <View style={styles.field}>
-              <Text style={styles.label}>
-                Phone Number
-              </Text>
-
-              <View style={styles.phoneContainer}>
-
-                <View style={styles.countrySection}>
-                  <Text style={styles.flag}>
-                    🇰🇪
-                  </Text>
-
-                  <Text style={styles.chevron}>
-                    ⌄
-                  </Text>
-                </View>
-
-                <View style={styles.divider} />
-
-                <Text style={styles.prefix}>
-                  +254
-                </Text>
-
-                <View style={styles.divider} />
-
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="7XX XXX XXX"
-                  placeholderTextColor="#8DA5C2"
-                  keyboardType="phone-pad"
-                  maxLength={9}
-                  style={styles.phoneInput}
-                />
-
-              </View>
-            </View>
-
-
-            {/* PHYSICAL ADDRESS */}
-
-            <View style={styles.field}>
-              <Text style={styles.label}>
-                Physical Address
-              </Text>
-
-              <View style={styles.inputContainer}>
-                <View style={styles.locationPin}>
-                  <View style={styles.locationDot} />
-                </View>
-
-                <TextInput
-                  value={physicalAddress}
-                  onChangeText={setPhysicalAddress}
-                  placeholder="e.g. Bamburi, Mombasa"
-                  placeholderTextColor="#8DA5C2"
-                  style={styles.input}
-                />
-              </View>
-            </View>
-
-
-            {/* DELIVERY LOCATION */}
-
-            <View style={styles.field}>
-              <Text style={styles.label}>
-                Delivery Location
-              </Text>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.homeIcon}>
-                  ◆
-                </Text>
-
-                <TextInput
-                  value={deliveryLocation}
-                  onChangeText={setDeliveryLocation}
-                  placeholder="Estate, building, house or landmark"
-                  placeholderTextColor="#8DA5C2"
-                  style={styles.input}
-                />
-              </View>
-            </View>
-
-
-            {/* ERROR */}
-
-            {error ? (
-              <Text style={styles.errorText}>
-                {error}
-              </Text>
+            {locationMessage ? (
+              <Text style={styles.hintText}>{locationMessage}</Text>
             ) : null}
 
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            {/* CONTINUE */}
-
-            <TouchableOpacity
-              style={[
-                styles.continueButton,
-                (!formComplete || loading) && styles.continueDisabled,
-              ]}
-              disabled={!formComplete || loading}
-              activeOpacity={0.85}
+            <PrimaryButton
+              title="Continue"
               onPress={handleContinue}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <>
-                  <Text style={styles.continueText}>
-                    Continue
-                  </Text>
+              disabled={!formComplete}
+              loading={loading}
+              style={styles.button}
+            />
 
-                  <Text style={styles.continueArrow}>
-                    →
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-
-            {/* LOGIN */}
-
-            <View style={styles.loginRow}>
-              <Text style={styles.loginQuestion}>
-                Already have an account?
-              </Text>
+            <View style={styles.footerRow}>
+              <Text style={styles.footerText}>Already have an account? </Text>
 
               <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate('Login')
-                }
+                onPress={() => navigation.navigate('Login')}
+                activeOpacity={0.7}
+                accessibilityRole="link"
               >
-                <Text style={styles.loginLink}>
-                  {' '}Log In
-                </Text>
+                <Text style={styles.footerLink}>Log in</Text>
               </TouchableOpacity>
             </View>
-
           </View>
-
-
-          {/* =========================
-              REAL BOTTOM WATER
-          ========================== */}
-
-          <View style={styles.bottomSection}>
-            <Image
-                source={require('../../../assets/images/signup-water-bottom.png')}
-                style={styles.bottomWaterImage}
-                resizeMode="stretch"
-            />
-          </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-
 const styles = StyleSheet.create({
-
   flex: {
     flex: 1,
   },
-
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.surface,
   },
-
   scrollContent: {
     flexGrow: 1,
-    backgroundColor: '#FFFFFF',
+    paddingBottom: 32,
   },
-
-
-  /* =========================
-     TOP WATER
-  ========================== */
-
-topSection: {
-  height: 150,
-  position: 'relative',
-  overflow: 'hidden',
-  backgroundColor: '#FFFFFF',
-},
-
-topWaterImage: {
-  position: 'absolute',
-  width: '100%',
-  height: 135,
-  left: 0,
-  bottom: 0,
-},
-
-
-
-
-  /* =========================
-     BACK BUTTON
-  ========================== */
-
-  backButton: {
-    position: 'absolute',
-
-    top: 14,
-    left: 22,
-
-    zIndex: 10,
-
-    width: 48,
-    height: 48,
-
-    borderRadius: 24,
-
-    backgroundColor: 'rgba(235,247,255,0.92)',
-
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  backArrow: {
-    color: '#062B68',
-
-    fontSize: 38,
-    lineHeight: 40,
-
-    marginTop: -5,
-  },
-
-
-  /* =========================
-     CONTENT
-  ========================== */
-
   content: {
-    paddingHorizontal: 28,
-    paddingTop: 28,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
-
   title: {
-    color: '#061F5C',
-
-    fontSize: 32,
-    lineHeight: 39,
-
-    fontWeight: '800',
-
-    letterSpacing: -0.8,
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 26,
+    letterSpacing: -0.6,
   },
-
   subtitle: {
-    marginTop: 8,
-    marginBottom: 29,
-
-    color: '#7B91AE',
-
-    fontSize: 16,
-    lineHeight: 24,
+    marginTop: 6,
+    marginBottom: 6,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 14,
+    lineHeight: 21,
   },
-
-
-  /* =========================
-     FIELDS
-  ========================== */
-
   field: {
-    marginBottom: 18,
+    marginTop: 14,
   },
-
-  label: {
-    marginBottom: 8,
-
-    color: '#061F5C',
-
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-  inputContainer: {
-    height: 58,
-
+  locationButton: {
+    height: 36,
+    minWidth: 120,
+    marginRight: -6,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-
-    borderWidth: 1.4,
-    borderColor: '#D5E4F1',
-
-    borderRadius: 16,
-
-    backgroundColor: '#FCFEFF',
-
-    paddingHorizontal: 17,
-  },
-
-  input: {
-    flex: 1,
-
-    paddingVertical: 15,
-
-    color: '#0B315F',
-
-    fontSize: 16,
-  },
-
-
-  /* =========================
-     PERSON ICON
-  ========================== */
-
-  personIcon: {
-    width: 24,
-    height: 27,
-
-    marginRight: 14,
-
-    alignItems: 'center',
-  },
-
-  personHead: {
-    width: 9,
-    height: 9,
-
-    borderRadius: 5,
-
-    backgroundColor: '#8098B5',
-  },
-
-  personBody: {
-    width: 18,
-    height: 10,
-
-    marginTop: 3,
-
-    borderTopLeftRadius: 9,
-    borderTopRightRadius: 9,
-
-    backgroundColor: '#8098B5',
-  },
-
-
-  /* =========================
-     PHONE
-  ========================== */
-
-  phoneContainer: {
-    height: 58,
-
-    flexDirection: 'row',
-    alignItems: 'center',
-
-    borderWidth: 1.4,
-    borderColor: '#D5E4F1',
-
-    borderRadius: 16,
-
-    backgroundColor: '#FCFEFF',
-
-    paddingHorizontal: 15,
-  },
-
-  countrySection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-
-    paddingRight: 12,
-  },
-
-  flag: {
-    fontSize: 21,
-  },
-
-  chevron: {
-    marginLeft: 7,
-    marginTop: -4,
-
-    color: '#7B92AE',
-
-    fontSize: 18,
-  },
-
-  divider: {
-    width: 1,
-    height: 30,
-
-    backgroundColor: '#D8E5EF',
-  },
-
-  prefix: {
-    paddingHorizontal: 15,
-
-    color: '#061F5C',
-
-    fontSize: 16,
-    fontWeight: '800',
-  },
-
-  phoneInput: {
-    flex: 1,
-
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-
-    color: '#0B315F',
-
-    fontSize: 16,
-  },
-
-
-  /* =========================
-     LOCATION ICON
-  ========================== */
-
-  locationPin: {
-    width: 19,
-    height: 23,
-
-    marginRight: 16,
-
-    borderRadius: 11,
-
-    backgroundColor: '#8098B5',
-
     justifyContent: 'center',
-    alignItems: 'center',
-
-    transform: [
-      {
-        rotate: '45deg',
-      },
-    ],
+    gap: 4,
+    borderRadius: 10,
+    backgroundColor: COLORS.tint,
   },
-
-  locationDot: {
-    width: 6,
-    height: 6,
-
-    borderRadius: 3,
-
-    backgroundColor: '#FFFFFF',
+  locationButtonText: {
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
+    fontSize: 12,
   },
-
-
-  /* =========================
-     HOME ICON
-  ========================== */
-
-  homeIcon: {
-    marginRight: 16,
-
-    color: '#8098B5',
-
-    fontSize: 18,
+  hintText: {
+    marginTop: 8,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
+    lineHeight: 19,
   },
-
-
-  /* =========================
-     ERROR
-  ========================== */
-
   errorText: {
-    marginBottom: 10,
-
-    color: '#C62828',
-
+    marginTop: 12,
+    color: COLORS.red,
+    fontFamily: FONTS.semibold,
     fontSize: 14,
     lineHeight: 20,
   },
-
-
-  /* =========================
-     BUTTON
-  ========================== */
-
-  continueButton: {
-    height: 60,
-
-    marginTop: 7,
-
-    borderRadius: 18,
-
-    backgroundColor: '#087FD1',
-
+  button: {
+    marginTop: 22,
+  },
+  footerRow: {
+    marginTop: 20,
     flexDirection: 'row',
-
-    justifyContent: 'center',
-    alignItems: 'center',
-
-    shadowColor: '#0077CA',
-
-    shadowOpacity: 0.24,
-
-    shadowRadius: 12,
-
-    shadowOffset: {
-      width: 0,
-      height: 7,
-    },
-
-    elevation: 5,
-  },
-
-  continueDisabled: {
-    backgroundColor: '#86BFE3',
-
-    shadowOpacity: 0,
-
-    elevation: 0,
-  },
-
-  continueText: {
-    color: '#FFFFFF',
-
-    fontSize: 18,
-    fontWeight: '800',
-  },
-
-  continueArrow: {
-    marginLeft: 14,
-    marginTop: -2,
-
-    color: '#FFFFFF',
-
-    fontSize: 28,
-  },
-
-
-  /* =========================
-     LOGIN
-  ========================== */
-
-  loginRow: {
-    marginTop: 21,
-
-    flexDirection: 'row',
-
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  loginQuestion: {
-    color: '#617A97',
-
+  footerText: {
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
     fontSize: 14,
   },
-
-  loginLink: {
-    color: '#0075CA',
-
+  footerLink: {
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
     fontSize: 14,
-    fontWeight: '800',
   },
-
-
-  /* =========================
-     BOTTOM WATER
-  ========================== */
-
-  bottomSection: {
-  height: 145,
-  marginTop: 5,
-  position: 'relative',
-  overflow: 'hidden',
-  backgroundColor: '#FFFFFF',
-},
-
-bottomWaterImage: {
-  position: 'absolute',
-  width: '100%',
-  height: 135,
-  left: 0,
-  bottom: 0,
-},
-
 });

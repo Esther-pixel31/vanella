@@ -27,7 +27,8 @@
         {
           "locationWhenInUsePermission": "Vanella uses your location to find your delivery address and your nearest branch."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

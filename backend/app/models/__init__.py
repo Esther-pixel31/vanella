@@ -8,6 +8,7 @@ from app.models.otp import OtpRequest
 from app.models.payment import Payment
 from app.models.product import Product
 from app.models.refresh_token import RefreshToken
+from app.models.user import User
 
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "Payment",
     "Product",
     "RefreshToken",
+    "User",
 ]

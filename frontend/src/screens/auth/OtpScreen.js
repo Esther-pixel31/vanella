@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,10 +12,14 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 import { createAddress } from '../../api/addresses';
 import { requestOtp, verifyOtp } from '../../api/auth';
 import { ApiError, setTokens } from '../../api/client';
+import AuthBrandPanel from '../../components/AuthBrandPanel';
+import PrimaryButton from '../../components/PrimaryButton';
+import { COLORS, FONTS } from '../../theme';
 
 const CODE_LENGTH = 6;
 const RESEND_WAIT_SECONDS = 30;
@@ -35,8 +37,15 @@ function formatPhone(phone = '') {
 
 export default function OtpScreen({ navigation, route }) {
   // mode is 'signup' (all fields) or 'login' (phone only).
-  const { mode, phone, fullName, physicalAddress, deliveryLocation } =
-    route.params || {};
+  // deliveryCoords is set when the delivery location came from GPS.
+  const {
+    mode,
+    phone,
+    fullName,
+    physicalAddress,
+    deliveryLocation,
+    deliveryCoords,
+  } = route.params || {};
 
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -75,6 +84,8 @@ export default function OtpScreen({ navigation, route }) {
       await createAddress({
         label: 'Home',
         addressLine: deliveryLocation,
+        latitude: deliveryCoords?.latitude ?? null,
+        longitude: deliveryCoords?.longitude ?? null,
         isDefault: true,
       });
 
@@ -162,7 +173,9 @@ export default function OtpScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <StatusBar style="light" />
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -172,53 +185,25 @@ export default function OtpScreen({ navigation, route }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-
-          {/* =========================
-              TOP WATER
-          ========================== */}
-
-          <View style={styles.topSection}>
-            <Image
-              source={require('../../../assets/images/signup-water-top.png')}
-              style={styles.topWaterImage}
-              resizeMode="stretch"
-            />
-
-            {!addressPending && (
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.backArrow}>‹</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-
-          {/* =========================
-              CONTENT
-          ========================== */}
+          <AuthBrandPanel
+            height={170}
+            onBack={addressPending ? undefined : () => navigation.goBack()}
+          />
 
           <View style={styles.content}>
-
-            <Text style={styles.title}>
-              Verify your number
-            </Text>
+            <Text style={styles.title}>Verify your number</Text>
 
             <Text style={styles.subtitle}>
               Enter the 6-digit code sent to{'\n'}
-              <Text style={styles.subtitlePhone}>
-                {formatPhone(phone)}
-              </Text>
+              <Text style={styles.subtitlePhone}>{formatPhone(phone)}</Text>
             </Text>
-
 
             {/* CODE BOXES */}
 
             <Pressable
               style={styles.codeRow}
               onPress={() => inputRef.current?.focus()}
+              accessibilityLabel="Verification code"
             >
               {Array.from({ length: CODE_LENGTH }).map((_, index) => {
                 const digit = code[index];
@@ -235,9 +220,7 @@ export default function OtpScreen({ navigation, route }) {
                       error && !addressPending && styles.codeBoxError,
                     ]}
                   >
-                    <Text style={styles.codeDigit}>
-                      {digit || ''}
-                    </Text>
+                    <Text style={styles.codeDigit}>{digit || ''}</Text>
                   </View>
                 );
               })}
@@ -258,83 +241,37 @@ export default function OtpScreen({ navigation, route }) {
               />
             </Pressable>
 
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            {/* MESSAGES */}
+            {notice ? <Text style={styles.noticeText}>{notice}</Text> : null}
 
-            {error ? (
-              <Text style={styles.errorText}>
-                {error}
-              </Text>
-            ) : null}
-
-            {notice ? (
-              <Text style={styles.noticeText}>
-                {notice}
-              </Text>
-            ) : null}
-
-
-            {/* VERIFY */}
-
-            <TouchableOpacity
-              style={[
-                styles.verifyButton,
-                !canSubmit && styles.verifyDisabled,
-              ]}
-              disabled={!canSubmit}
-              activeOpacity={0.85}
+            <PrimaryButton
+              title={addressPending ? 'Try Again' : 'Verify'}
               onPress={handleVerify}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.verifyText}>
-                  {addressPending ? 'Try Again' : 'Verify'}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-
-            {/* RESEND */}
+              disabled={!canSubmit && !loading}
+              loading={loading}
+            />
 
             {!addressPending && (
               <View style={styles.resendRow}>
-                <Text style={styles.resendQuestion}>
-                  Didn't get the code?
-                </Text>
+                <Text style={styles.resendQuestion}>Didn't get the code? </Text>
 
                 {secondsLeft > 0 ? (
-                  <Text style={styles.resendWait}>
-                    {' '}Resend in {secondsLeft}s
-                  </Text>
+                  <Text style={styles.resendWait}>Resend in {secondsLeft}s</Text>
                 ) : (
                   <TouchableOpacity
                     onPress={handleResend}
                     disabled={resending}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.resendLink}>
-                      {' '}{resending ? 'Sending…' : 'Resend'}
+                      {resending ? 'Sending…' : 'Resend'}
                     </Text>
                   </TouchableOpacity>
                 )}
               </View>
             )}
-
           </View>
-
-
-          {/* =========================
-              BOTTOM WATER
-          ========================== */}
-
-          <View style={styles.bottomSection}>
-            <Image
-              source={require('../../../assets/images/signup-water-bottom.png')}
-              style={styles.bottomWaterImage}
-              resizeMode="stretch"
-            />
-          </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -343,293 +280,111 @@ export default function OtpScreen({ navigation, route }) {
 
 
 const styles = StyleSheet.create({
-
   flex: {
     flex: 1,
   },
-
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.surface,
   },
-
   scrollContent: {
     flexGrow: 1,
-    backgroundColor: '#FFFFFF',
+    paddingBottom: 32,
   },
-
-
-  /* =========================
-     TOP WATER
-  ========================== */
-
-  topSection: {
-    height: 150,
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-  },
-
-  topWaterImage: {
-    position: 'absolute',
-    width: '100%',
-    height: 135,
-    left: 0,
-    bottom: 0,
-  },
-
-
-  /* =========================
-     BACK BUTTON
-  ========================== */
-
-  backButton: {
-    position: 'absolute',
-
-    top: 14,
-    left: 22,
-
-    zIndex: 10,
-
-    width: 48,
-    height: 48,
-
-    borderRadius: 24,
-
-    backgroundColor: 'rgba(235,247,255,0.92)',
-
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  backArrow: {
-    color: '#062B68',
-
-    fontSize: 38,
-    lineHeight: 40,
-
-    marginTop: -5,
-  },
-
-
-  /* =========================
-     CONTENT
-  ========================== */
-
   content: {
-    flex: 1,
-
-    paddingHorizontal: 28,
-    paddingTop: 28,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
-
   title: {
-    color: '#061F5C',
-
-    fontSize: 32,
-    lineHeight: 39,
-
-    fontWeight: '800',
-
-    letterSpacing: -0.8,
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 26,
+    letterSpacing: -0.6,
   },
-
   subtitle: {
-    marginTop: 8,
-    marginBottom: 30,
-
-    color: '#7B91AE',
-
-    fontSize: 16,
-    lineHeight: 24,
+    marginTop: 6,
+    marginBottom: 24,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 15,
+    lineHeight: 22,
   },
-
   subtitlePhone: {
-    color: '#061F5C',
-
-    fontWeight: '800',
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
   },
-
-
-  /* =========================
-     CODE BOXES
-  ========================== */
-
   codeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-
-    marginBottom: 20,
+    marginBottom: 18,
   },
-
   codeBox: {
     width: '14.5%',
-    height: 60,
-
-    borderWidth: 1.4,
-    borderColor: '#D5E4F1',
-
-    borderRadius: 16,
-
-    backgroundColor: '#FCFEFF',
-
+    height: 58,
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   codeBoxActive: {
-    borderColor: '#087FD1',
+    borderColor: COLORS.royal,
   },
-
   codeBoxFilled: {
-    backgroundColor: '#EBF7FF',
+    backgroundColor: COLORS.tint,
   },
-
   codeBoxError: {
-    borderColor: '#C62828',
+    borderColor: COLORS.red,
   },
-
   codeDigit: {
-    color: '#061F5C',
-
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
     fontSize: 24,
-    fontWeight: '800',
   },
-
   hiddenInput: {
     position: 'absolute',
-
     top: 0,
     left: 0,
-
     width: '100%',
     height: '100%',
-
     opacity: 0,
   },
-
-
-  /* =========================
-     MESSAGES
-  ========================== */
-
   errorText: {
-    marginBottom: 10,
-
-    color: '#C62828',
-
+    marginTop: -6,
+    marginBottom: 14,
+    color: COLORS.red,
+    fontFamily: FONTS.semibold,
     fontSize: 14,
     lineHeight: 20,
   },
-
   noticeText: {
-    marginBottom: 10,
-
-    color: '#0075CA',
-
+    marginTop: -6,
+    marginBottom: 14,
+    color: COLORS.royal,
+    fontFamily: FONTS.semibold,
     fontSize: 14,
     lineHeight: 20,
   },
-
-
-  /* =========================
-     BUTTON
-  ========================== */
-
-  verifyButton: {
-    height: 60,
-
-    marginTop: 7,
-
-    borderRadius: 18,
-
-    backgroundColor: '#087FD1',
-
-    justifyContent: 'center',
-    alignItems: 'center',
-
-    shadowColor: '#0077CA',
-
-    shadowOpacity: 0.24,
-
-    shadowRadius: 12,
-
-    shadowOffset: {
-      width: 0,
-      height: 7,
-    },
-
-    elevation: 5,
-  },
-
-  verifyDisabled: {
-    backgroundColor: '#86BFE3',
-
-    shadowOpacity: 0,
-
-    elevation: 0,
-  },
-
-  verifyText: {
-    color: '#FFFFFF',
-
-    fontSize: 18,
-    fontWeight: '800',
-  },
-
-
-  /* =========================
-     RESEND
-  ========================== */
-
   resendRow: {
-    marginTop: 21,
-
+    marginTop: 20,
     flexDirection: 'row',
-
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   resendQuestion: {
-    color: '#617A97',
-
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
     fontSize: 14,
   },
-
   resendWait: {
-    color: '#8DA5C2',
-
+    color: COLORS.muted,
+    fontFamily: FONTS.bold,
     fontSize: 14,
-    fontWeight: '800',
   },
-
   resendLink: {
-    color: '#0075CA',
-
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
     fontSize: 14,
-    fontWeight: '800',
   },
-
-
-  /* =========================
-     BOTTOM WATER
-  ========================== */
-
-  bottomSection: {
-    height: 145,
-    marginTop: 5,
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-  },
-
-  bottomWaterImage: {
-    position: 'absolute',
-    width: '100%',
-    height: 135,
-    left: 0,
-    bottom: 0,
-  },
-
 });

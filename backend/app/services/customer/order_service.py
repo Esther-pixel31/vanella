@@ -9,6 +9,7 @@ from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.schemas.order import OrderCreate
+from app.services.customer.delivery_schedule import new_delivery_code, plan_delivery
 from app.services.customer.loyalty_service import (
     BULK_PRODUCT_TYPES,
     FREE_20L_REWARD,
@@ -126,6 +127,10 @@ def create_order(
     delivery_fee = Decimal("0")
     total = subtotal - discount_amount + delivery_fee
 
+    promised_by, is_scheduled = plan_delivery(
+        [product_type for _, product_type in accrual_items]
+    )
+
     # M-Pesa orders earn their points only once the payment succeeds
     # (see payment_service); cash orders earn them straight away.
     pays_by_mpesa = data.payment_method == "mpesa"
@@ -138,6 +143,9 @@ def create_order(
         payment_method=data.payment_method,
         payment_status="pending" if pays_by_mpesa else "unpaid",
         points_awarded=not pays_by_mpesa,
+        promised_by=promised_by,
+        is_scheduled=is_scheduled,
+        delivery_code=new_delivery_code(),
         subtotal=subtotal,
         delivery_fee=delivery_fee,
         total=total,

@@ -11,6 +11,8 @@ from app.services.customer.order_service import get_customer_orders
 STATUS_MAP = {
     "Order Received": "received",
     "Ready to Deliver": "ready",
+    # The home screen's tracker has three steps; on its way is the middle one.
+    "On the Way": "ready",
     "Delivered": "delivered",
 }
 

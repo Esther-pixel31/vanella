@@ -1,7 +1,6 @@
 import React, { useCallback, useState } from 'react';
 
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,21 +13,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 
+import { getAddresses } from '../../../api/addresses';
 import { ApiError, clearTokens } from '../../../api/client';
 import { getProfile } from '../../../api/profile';
+import { getRewards } from '../../../api/rewards';
 import BottomNav from '../../../components/BottomNav';
-import VanellaHeader from '../../../components/VanellaHeader';
+import PrimaryButton from '../../../components/PrimaryButton';
+import {
+  Card,
+  ErrorState,
+  IconTile,
+  LoadingState,
+  Pill,
+  ScreenTitle,
+  SectionTitle,
+} from '../../../components/ui';
 import { useCart } from '../../../context/CartContext';
-
-
-const COLORS = {
-  primary: '#087FF5',
-  background: '#F5F8FC',
-  white: '#FFFFFF',
-  text: '#082D6A',
-  muted: '#63738B',
-  danger: '#C62828',
-};
+import { COLORS, FONTS } from '../../../theme';
 
 
 // 254700000003 -> +254 700 000 003
@@ -36,22 +37,49 @@ function formatPhone(phone = '') {
   return `+${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`;
 }
 
+// "Esther Wanza Mutua" -> "EM"
+function initials(fullName = '') {
+  const words = fullName.trim().split(/\s+/).filter(Boolean);
 
-function DetailRow({ icon, label, value, last = false }) {
-  return (
-    <View style={[styles.detailRow, last && styles.detailRowLast]}>
-      <Ionicons name={icon} size={20} color="#0869E8" />
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0][0].toUpperCase();
 
-      <View style={styles.detailText}>
-        <Text style={styles.detailLabel}>
-          {label}
-        </Text>
+  return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
+}
 
-        <Text style={styles.detailValue}>
-          {value}
-        </Text>
+
+// One row inside a list card. With `onPress` it is a link with a chevron.
+function ListRow({ icon, title, subtitle, extra, onPress, last = false }) {
+  const content = (
+    <>
+      <IconTile name={icon} size={36} iconSize={18} />
+
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
-    </View>
+
+      {extra}
+
+      {onPress ? (
+        <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
+      ) : null}
+    </>
+  );
+
+  const style = [styles.row, !last && styles.rowDivider];
+
+  if (!onPress) return <View style={style}>{content}</View>;
+
+  return (
+    <TouchableOpacity
+      style={style}
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+    >
+      {content}
+    </TouchableOpacity>
   );
 }
 
@@ -59,7 +87,7 @@ function DetailRow({ icon, label, value, last = false }) {
 export default function ProfileScreen({ navigation }) {
   const { clear } = useCart();
 
-  const [profile, setProfile] = useState(null);
+  const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [confirmingLogout, setConfirmingLogout] = useState(false);
 
@@ -73,7 +101,13 @@ export default function ProfileScreen({ navigation }) {
     setLoadError('');
 
     try {
-      setProfile(await getProfile());
+      const [profile, addresses, rewards] = await Promise.all([
+        getProfile(),
+        getAddresses(),
+        getRewards(),
+      ]);
+
+      setData({ profile, addresses, points: rewards.points_balance });
     } catch (err) {
       // 401 here means the saved login could not be refreshed.
       if (err instanceof ApiError && err.status === 401) {
@@ -106,73 +140,97 @@ export default function ProfileScreen({ navigation }) {
 
 
   const renderContent = () => {
-    if (profile === null) {
-      if (loadError) {
-        return (
-          <View style={styles.centered}>
-            <Ionicons
-              name="cloud-offline-outline"
-              size={44}
-              color={COLORS.muted}
-            />
-
-            <Text style={styles.centeredText}>
-              {loadError}
-            </Text>
-
-            <TouchableOpacity
-              style={styles.primaryButton}
-              activeOpacity={0.85}
-              onPress={loadProfile}
-            >
-              <Text style={styles.primaryButtonText}>
-                Try Again
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-
-      return (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
+    if (data === null) {
+      return loadError ? (
+        <ErrorState message={loadError} onRetry={loadProfile} />
+      ) : (
+        <LoadingState />
       );
     }
 
+    const { profile, addresses, points } = data;
+
     return (
       <ScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
 
-        <Text style={styles.pageTitle}>
-          Profile
-        </Text>
+        {/* =====================================
+            WHO
+        ===================================== */}
+
+        <View style={styles.identityCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials(profile.full_name)}</Text>
+          </View>
+
+          <View style={styles.identityText}>
+            <Text style={styles.name}>{profile.full_name}</Text>
+            <Text style={styles.phone}>{formatPhone(profile.phone_number)}</Text>
+          </View>
+        </View>
 
 
-        <View style={styles.card}>
+        {/* =====================================
+            ADDRESSES
+        ===================================== */}
 
-          <DetailRow
-            icon="person"
-            label="Name"
-            value={profile.full_name}
-          />
+        <View style={styles.section}>
+          <SectionTitle title="Saved addresses" />
 
-          <DetailRow
-            icon="call"
-            label="Phone number"
-            value={formatPhone(profile.phone_number)}
-          />
+          <Card style={styles.listCard}>
+            {addresses.length > 0 ? (
+              addresses.map((address, index) => (
+                <ListRow
+                  key={address.id}
+                  icon={address.is_default ? 'home' : 'location'}
+                  title={address.label}
+                  subtitle={address.address_line}
+                  extra={address.is_default ? <Pill label="Default" tone="blue" /> : null}
+                  last={index === addresses.length - 1}
+                />
+              ))
+            ) : (
+              <Text style={styles.emptyText}>
+                No saved addresses yet. One is saved when you confirm a delivery
+                address at checkout.
+              </Text>
+            )}
+          </Card>
+        </View>
 
-          <DetailRow
-            icon="location"
-            label="Physical address"
-            value={profile.physical_address || 'Not set'}
-            last
-          />
 
+        {/* =====================================
+            ACCOUNT
+        ===================================== */}
+
+        <View style={styles.section}>
+          <SectionTitle title="Account" />
+
+          <Card style={styles.listCard}>
+            <ListRow
+              icon="person"
+              title="Physical address"
+              subtitle={profile.physical_address || 'Not set'}
+            />
+
+            <ListRow
+              icon="gift"
+              title="Rewards"
+              subtitle={`${points} points`}
+              onPress={() => navigation.navigate('Rewards')}
+            />
+
+            <ListRow
+              icon="receipt"
+              title="Order history"
+              subtitle="Your active and past orders"
+              onPress={() => navigation.navigate('Orders')}
+              last
+            />
+          </Card>
         </View>
 
 
@@ -180,51 +238,40 @@ export default function ProfileScreen({ navigation }) {
             LOG OUT
         ===================================== */}
 
-        {confirmingLogout ? (
-          <View style={styles.card}>
-
-            <Text style={styles.confirmTitle}>
-              Log out of Vanella?
-            </Text>
-
-            <Text style={styles.confirmText}>
-              You will need your phone number and a new code to log back in.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.dangerButton}
-              activeOpacity={0.85}
-              onPress={handleLogout}
-            >
-              <Text style={styles.primaryButtonText}>
-                Yes, Log Out
+        <View style={styles.section}>
+          {confirmingLogout ? (
+            <Card>
+              <Text style={styles.confirmTitle}>Log out of Vanella?</Text>
+              <Text style={styles.confirmText}>
+                You will need your phone number and a new code to log back in.
               </Text>
-            </TouchableOpacity>
 
+              <PrimaryButton
+                title="Yes, log out"
+                onPress={handleLogout}
+                style={styles.logoutConfirm}
+              />
+
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setConfirmingLogout(false)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </Card>
+          ) : (
             <TouchableOpacity
-              style={styles.cancelButton}
-              activeOpacity={0.7}
-              onPress={() => setConfirmingLogout(false)}
+              style={styles.logoutButton}
+              onPress={() => setConfirmingLogout(true)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
             >
-              <Text style={styles.cancelButtonText}>
-                Cancel
-              </Text>
+              <Ionicons name="log-out-outline" size={20} color={COLORS.red} />
+              <Text style={styles.logoutText}>Log out</Text>
             </TouchableOpacity>
-
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.logoutButton}
-            activeOpacity={0.8}
-            onPress={() => setConfirmingLogout(true)}
-          >
-            <Ionicons name="log-out-outline" size={21} color={COLORS.danger} />
-
-            <Text style={styles.logoutText}>
-              Log Out
-            </Text>
-          </TouchableOpacity>
-        )}
+          )}
+        </View>
 
       </ScrollView>
     );
@@ -233,248 +280,150 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      <VanellaHeader
-        onBack={() => navigation.goBack()}
-        pageBackground={COLORS.background}
-      />
+      <ScreenTitle title="Profile" />
 
       {renderContent()}
 
       <BottomNav activeTab="profile" navigation={navigation} />
-
     </SafeAreaView>
   );
 }
 
 
-/* =========================================
-   STYLES
-========================================= */
-
 const styles = StyleSheet.create({
-
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.ground,
   },
-
-
-  scrollView: {
+  scroll: {
     flex: 1,
   },
-
-
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 4,
-
-    paddingBottom: 35,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  section: {
+    marginTop: 18,
   },
 
-
-  pageTitle: {
-    color: COLORS.text,
-
-    fontSize: 29,
-    lineHeight: 35,
-
-    fontWeight: '900',
-
-    marginBottom: 17,
+  /* Identity */
+  identityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 18,
+    borderRadius: 22,
+    backgroundColor: COLORS.deep,
   },
-
-
-  centered: {
-    flex: 1,
-
+  avatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: COLORS.royal,
     alignItems: 'center',
     justifyContent: 'center',
-
-    paddingHorizontal: 36,
   },
-
-
-  centeredText: {
-    color: COLORS.muted,
-
-    fontSize: 15,
-    lineHeight: 22,
-
-    textAlign: 'center',
-
-    marginTop: 10,
-    marginBottom: 20,
+  avatarText: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 20,
   },
-
-
-  /* =======================================
-     DETAILS
-  ======================================= */
-
-  card: {
-    backgroundColor: COLORS.white,
-
-    borderRadius: 18,
-
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-
-    marginBottom: 14,
-
-    shadowColor: '#163A6D',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-
-    elevation: 1,
-  },
-
-
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-
-    marginBottom: 16,
-  },
-
-
-  detailRowLast: {
-    marginBottom: 0,
-  },
-
-
-  detailText: {
+  identityText: {
     flex: 1,
-
-    marginLeft: 13,
   },
-
-
-  detailLabel: {
-    color: COLORS.muted,
-
+  name: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 19,
+  },
+  phone: {
+    marginTop: 2,
+    color: '#B9CCE8',
+    fontFamily: FONTS.medium,
     fontSize: 13,
-    lineHeight: 17,
   },
 
-
-  detailValue: {
-    color: COLORS.text,
-
-    fontSize: 16,
-    lineHeight: 21,
-
-    fontWeight: '800',
-
+  /* Lists */
+  listCard: {
+    paddingVertical: 2,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  rowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.line,
+  },
+  rowText: {
+    flex: 1,
+  },
+  rowTitle: {
+    color: COLORS.ink,
+    fontFamily: FONTS.bold,
+    fontSize: 14,
+  },
+  rowSubtitle: {
     marginTop: 1,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 12,
+  },
+  emptyText: {
+    paddingVertical: 12,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
+    lineHeight: 19,
   },
 
-
-  /* =======================================
-     LOG OUT
-  ======================================= */
-
+  /* Log out */
   logoutButton: {
-    height: 56,
-
-    borderRadius: 28,
-
-    borderWidth: 1.4,
-    borderColor: '#F0C4C4',
-
-    backgroundColor: COLORS.white,
-
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-
     gap: 8,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#F0C4C4',
+    backgroundColor: COLORS.surface,
   },
-
-
   logoutText: {
-    color: COLORS.danger,
-
-    fontSize: 16,
-    fontWeight: '800',
+    color: COLORS.red,
+    fontFamily: FONTS.extrabold,
+    fontSize: 15,
   },
-
-
   confirmTitle: {
-    color: COLORS.text,
-
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
     fontSize: 18,
-    lineHeight: 23,
-
-    fontWeight: '900',
   },
-
-
   confirmText: {
+    marginTop: 4,
     color: COLORS.muted,
-
+    fontFamily: FONTS.medium,
     fontSize: 14,
     lineHeight: 20,
-
-    marginTop: 4,
-    marginBottom: 16,
   },
-
-
-  primaryButton: {
-    height: 48,
-
-    paddingHorizontal: 30,
-
-    borderRadius: 24,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoutConfirm: {
+    marginTop: 16,
+    backgroundColor: COLORS.red,
   },
-
-
-  dangerButton: {
-    height: 50,
-
-    borderRadius: 25,
-
-    backgroundColor: COLORS.danger,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-
-  primaryButtonText: {
-    color: COLORS.white,
-
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-
   cancelButton: {
     height: 46,
-
+    marginTop: 4,
     alignItems: 'center',
     justifyContent: 'center',
-
-    marginTop: 4,
   },
-
-
-  cancelButtonText: {
-    color: '#0866DD',
-
+  cancelText: {
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
     fontSize: 15,
-    fontWeight: '800',
   },
-
 });

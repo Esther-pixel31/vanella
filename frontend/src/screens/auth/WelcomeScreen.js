@@ -1,379 +1,118 @@
 import React from 'react';
-import {
-  Image,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+
+import BottleGlow from '../../components/BottleGlow';
+import PrimaryButton from '../../components/PrimaryButton';
+import { COLORS, FONTS } from '../../theme';
 
 export default function WelcomeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar style="light" />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
+        <View style={styles.hero}>
+          <BottleGlow width={220} height={300} />
 
-        {/* =========================
-            TOP WATER
-        ========================== */}
-
-        <View style={styles.topSection}>
-          <Image
-            source={require('../../../assets/images/signup-water-top.png')}
-            style={styles.topWater}
-            resizeMode="stretch"
-          />
+          <Text style={styles.wordmark}>Vanella</Text>
+          <Text style={styles.tagline}>WATER, HEALTHY LIVING</Text>
         </View>
 
-
-        {/* =========================
-            MAIN CONTENT
-        ========================== */}
-
-        <View style={styles.content}>
-
-          {/* VANELLA LOGO */}
-
-          <Image
-            source={require('../../../assets/images/vanella-logo-transparent.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-
-
-          {/* HEADLINE */}
-
-          <View style={styles.headingContainer}>
-
-            <Text style={styles.cleanWater}>
-              Clean Water.
-            </Text>
-
-            <Text style={styles.healthyLiving}>
-              Healthy Living.
-            </Text>
-
-          </View>
-
-
-          {/* DESCRIPTION */}
+        <View style={styles.bottom}>
+          <Text style={styles.headline}>Clean water.{'\n'}Healthy living.</Text>
 
           <Text style={styles.description}>
-            Fresh, clean water delivered{'\n'}
-            when you need it.
+            Fresh, clean water delivered when you need it, with rewards on every
+            order.
           </Text>
 
-
-          {/* CREATE ACCOUNT */}
-
-          <TouchableOpacity
-            style={styles.createButton}
-            activeOpacity={0.85}
+          <PrimaryButton
+            title="Create account"
             onPress={() => navigation.navigate('Signup')}
-          >
-
-            <Text style={styles.createButtonText}>
-              Create Account
-            </Text>
-
-            <Text style={styles.createArrow}>
-              →
-            </Text>
-
-          </TouchableOpacity>
-
-
-          {/* LOGIN */}
+            style={styles.createButton}
+          />
 
           <TouchableOpacity
             style={styles.loginButton}
-            activeOpacity={0.8}
             onPress={() => navigation.navigate('Login')}
+            activeOpacity={0.8}
+            accessibilityRole="button"
           >
-
-            <Text style={styles.loginButtonText}>
-              Log In
-            </Text>
-
+            <Text style={styles.loginText}>Log in</Text>
           </TouchableOpacity>
-
         </View>
-
-
-        {/* =========================
-            BOTTOM WATER
-        ========================== */}
-
-        <View style={styles.bottomSection}>
-
-          <Image
-            source={require('../../../assets/images/signup-water-bottom.png')}
-            style={styles.bottomWater}
-            resizeMode="stretch"
-          />
-
-        </View>
-
       </ScrollView>
-
     </SafeAreaView>
   );
 }
 
-
 const styles = StyleSheet.create({
-
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.night,
   },
-
-
   scrollContent: {
     flexGrow: 1,
-    backgroundColor: '#FFFFFF',
+    justifyContent: 'space-between',
+    paddingBottom: 24,
   },
-
-
-  /* =========================
-     TOP WATER
-  ========================== */
-
-  topSection: {
-    height: 185,
-
-    position: 'relative',
-
-    overflow: 'hidden',
-
-    backgroundColor: '#FFFFFF',
-  },
-
-
-  topWater: {
-    position: 'absolute',
-
-    width: '100%',
-    height: 155,
-
-    left: 0,
-    bottom: 0,
-  },
-
-
-  /* =========================
-     MAIN CONTENT
-  ========================== */
-
-  content: {
-    flex: 1,
-
-    paddingHorizontal: 30,
-
+  hero: {
     alignItems: 'center',
+    paddingTop: 24,
   },
-
-
-  /* =========================
-     LOGO
-  ========================== */
-
-  logo: {
-    width: 190,
-    height: 145,
-
-    marginTop: 12,
-    marginBottom: 14,
+  wordmark: {
+    marginTop: -14,
+    color: COLORS.surface,
+    fontFamily: FONTS.script,
+    fontSize: 44,
+    lineHeight: 62,
   },
-
-
-  /* =========================
-     HEADLINE
-  ========================== */
-
-  headingContainer: {
-    width: '100%',
-
-    alignItems: 'center',
-
-    marginTop: 4,
+  tagline: {
+    color: COLORS.sky,
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    letterSpacing: 2.4,
   },
-
-
-  cleanWater: {
-    color: '#061F67',
-
-    fontSize: 45,
-    lineHeight: 53,
-
-    fontWeight: '600',
-
-    textAlign: 'center',
-
-    fontFamily: Platform.select({
-      ios: 'Georgia',
-      android: 'serif',
-      default: 'serif',
-    }),
-
-    letterSpacing: -1,
+  bottom: {
+    paddingHorizontal: 24,
+    paddingTop: 28,
   },
-
-
-  healthyLiving: {
-    color: '#0878F5',
-
-    fontSize: 45,
-    lineHeight: 53,
-
-    fontWeight: '600',
-
-    textAlign: 'center',
-
-    fontFamily: Platform.select({
-      ios: 'Georgia',
-      android: 'serif',
-      default: 'serif',
-    }),
-
-    letterSpacing: -1,
+  headline: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 30,
+    lineHeight: 37,
+    letterSpacing: -0.6,
   },
-
-
-  /* =========================
-     DESCRIPTION
-  ========================== */
-
   description: {
-    marginTop: 17,
-    marginBottom: 32,
-
-    color: '#7589A8',
-
-    fontSize: 17,
-    lineHeight: 25,
-
-    fontWeight: '500',
-
-    textAlign: 'center',
+    marginTop: 10,
+    color: '#B9CCE8',
+    fontFamily: FONTS.medium,
+    fontSize: 15,
+    lineHeight: 22,
   },
-
-
-  /* =========================
-     CREATE ACCOUNT
-  ========================== */
-
   createButton: {
-    width: '100%',
-    height: 61,
-
-    borderRadius: 18,
-
-    backgroundColor: '#0785E4',
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    shadowColor: '#0785E4',
-
-    shadowOpacity: 0.22,
-
-    shadowRadius: 12,
-
-    shadowOffset: {
-      width: 0,
-      height: 7,
-    },
-
-    elevation: 5,
+    marginTop: 26,
   },
-
-
-  createButtonText: {
-    color: '#FFFFFF',
-
-    fontSize: 18,
-    fontWeight: '800',
-  },
-
-
-  createArrow: {
-    marginLeft: 17,
-    marginTop: -2,
-
-    color: '#FFFFFF',
-
-    fontSize: 29,
-
-    fontWeight: '300',
-  },
-
-
-  /* =========================
-     LOGIN
-  ========================== */
-
   loginButton: {
-    width: '100%',
-    height: 61,
-
-    marginTop: 15,
-
-    borderRadius: 18,
-
-    borderWidth: 2,
-    borderColor: '#087DF0',
-
-    backgroundColor: '#FFFFFF',
-
+    height: 56,
+    marginTop: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-
-  loginButtonText: {
-    color: '#0875EA',
-
-    fontSize: 18,
-    fontWeight: '800',
+  loginText: {
+    color: COLORS.surface,
+    fontFamily: FONTS.extrabold,
+    fontSize: 16,
   },
-
-
-  /* =========================
-     BOTTOM WATER
-  ========================== */
-
-  bottomSection: {
-    height: 170,
-
-    marginTop: 20,
-
-    position: 'relative',
-
-    overflow: 'hidden',
-
-    backgroundColor: '#FFFFFF',
-  },
-
-
-  bottomWater: {
-    position: 'absolute',
-
-    width: '100%',
-    height: 160,
-
-    left: 0,
-    bottom: 0,
-  },
-
 });

@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -17,16 +16,12 @@ import {
   startMpesaPayment,
   switchToCash,
 } from '../../../api/payments';
+import FormField from '../../../components/FormField';
+import PrimaryButton from '../../../components/PrimaryButton';
+import { Card, MpesaMark } from '../../../components/ui';
+import { COLORS, FONTS } from '../../../theme';
 import { formatKes } from '../../../utils/format';
 
-
-const COLORS = {
-  primary: '#087FF5',
-  white: '#FFFFFF',
-  text: '#082D6A',
-  muted: '#63738B',
-  error: '#C62828',
-};
 
 const NETWORK_ERROR =
   'Could not reach the server. Check your connection and try again.';
@@ -180,48 +175,42 @@ export default function PaymentPanel({
 
 
   return (
-    <View style={styles.card}>
+    <Card style={styles.card}>
 
       {phase === IDLE ? (
         <View>
-          <Text style={styles.title}>
-            Pay {formatKes(order.total)} with M-Pesa
-          </Text>
+          <View style={styles.titleRow}>
+            <MpesaMark width={52} height={34} />
 
-          <Text style={styles.text}>
-            We will send a request to this number. Enter your M-Pesa PIN on
-            your phone to pay.
-          </Text>
-
-          <View style={styles.phoneContainer}>
-            <Text style={styles.prefix}>
-              +254
-            </Text>
-
-            <View style={styles.divider} />
-
-            <TextInput
-              style={styles.phoneInput}
-              value={localPhone}
-              onChangeText={(value) =>
-                setLocalPhone(value.replace(/\D/g, ''))
-              }
-              placeholder="7XX XXX XXX"
-              placeholderTextColor="#8DA5C2"
-              keyboardType="phone-pad"
-              maxLength={9}
-              editable={!busy}
-            />
+            <View style={styles.titleText}>
+              <Text style={styles.title}>Pay {formatKes(order.total)}</Text>
+              <Text style={styles.text}>
+                Enter your M-Pesa PIN on your phone when asked.
+              </Text>
+            </View>
           </View>
+
+          <FormField
+            label="M-Pesa number"
+            prefix="+254"
+            value={localPhone}
+            onChangeText={(value) => setLocalPhone(value.replace(/\D/g, ''))}
+            placeholder="7XX XXX XXX"
+            keyboardType="phone-pad"
+            maxLength={9}
+            editable={!busy}
+          />
         </View>
       ) : (
         <View style={styles.waiting}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <View style={styles.waitingMark}>
+            <MpesaMark width={64} height={42} />
+          </View>
+
+          <ActivityIndicator size="small" color={COLORS.royal} />
 
           <Text style={styles.waitingTitle}>
-            {phase === SENDING
-              ? 'Sending M-Pesa request…'
-              : 'Check your phone'}
+            {phase === SENDING ? 'Sending M-Pesa request…' : 'Check your phone'}
           </Text>
 
           {phase === WAITING ? (
@@ -240,32 +229,20 @@ export default function PaymentPanel({
         </View>
       )}
 
-
       {error ? (
         <View style={styles.errorRow}>
-          <Ionicons name="alert-circle" size={19} color={COLORS.error} />
-
-          <Text style={styles.errorText}>
-            {error}
-          </Text>
+          <Ionicons name="alert-circle" size={19} color={COLORS.red} />
+          <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
 
-
       {phase === IDLE ? (
-        <TouchableOpacity
-          style={[
-            styles.payButton,
-            (!isValidLocalPhone(localPhone) || busy) && styles.buttonDisabled,
-          ]}
-          activeOpacity={0.85}
-          disabled={!isValidLocalPhone(localPhone) || busy}
+        <PrimaryButton
+          title={payment ? 'Try M-Pesa again' : 'Pay with M-Pesa'}
           onPress={() => sendPrompt(`254${localPhone}`)}
-        >
-          <Text style={styles.payButtonText}>
-            {payment ? 'Try M-Pesa Again' : 'Pay with M-Pesa'}
-          </Text>
-        </TouchableOpacity>
+          disabled={!isValidLocalPhone(localPhone) || busy}
+          style={styles.payButton}
+        />
       ) : null}
 
       {phase !== SENDING ? (
@@ -274,219 +251,101 @@ export default function PaymentPanel({
           activeOpacity={0.7}
           disabled={switching}
           onPress={handleSwitchToCash}
+          accessibilityRole="button"
         >
           {switching ? (
-            <ActivityIndicator color="#0866DD" />
+            <ActivityIndicator color={COLORS.royal} />
           ) : (
-            <Text style={styles.cashButtonText}>
-              Pay cash on delivery instead
-            </Text>
+            <Text style={styles.cashButtonText}>Pay cash on delivery instead</Text>
           )}
         </TouchableOpacity>
       ) : null}
 
-    </View>
+    </Card>
   );
 }
 
 
 const styles = StyleSheet.create({
-
   card: {
-    backgroundColor: COLORS.white,
-
-    borderRadius: 18,
-
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-
-    marginTop: 14,
-    marginBottom: 13,
-
-    shadowColor: '#163A6D',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-
-    elevation: 1,
-  },
-
-
-  title: {
-    color: COLORS.text,
-
-    fontSize: 18,
-    lineHeight: 23,
-
-    fontWeight: '900',
-  },
-
-
-  text: {
-    color: COLORS.muted,
-
-    fontSize: 14,
-    lineHeight: 20,
-
-    marginTop: 4,
+    marginTop: 16,
     marginBottom: 12,
   },
-
-
-  phoneContainer: {
-    height: 54,
-
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-
-    borderWidth: 1.4,
-    borderColor: '#D5E4F1',
-
-    borderRadius: 14,
-
-    backgroundColor: '#FCFEFF',
-
-    paddingHorizontal: 15,
+    gap: 12,
+    marginBottom: 14,
   },
-
-
-  prefix: {
-    color: COLORS.text,
-
-    fontSize: 16,
-    fontWeight: '800',
-
-    paddingRight: 13,
-  },
-
-
-  divider: {
-    width: 1,
-    height: 28,
-
-    backgroundColor: '#D8E5EF',
-  },
-
-
-  phoneInput: {
+  titleText: {
     flex: 1,
-
-    paddingHorizontal: 13,
-
-    color: COLORS.text,
-
-    fontSize: 16,
   },
-
-
+  title: {
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 18,
+  },
+  text: {
+    marginTop: 2,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
+    lineHeight: 19,
+  },
   waiting: {
     alignItems: 'center',
-
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
-
-
+  waitingMark: {
+    marginBottom: 14,
+  },
   waitingTitle: {
-    color: COLORS.text,
-
+    marginTop: 10,
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
     fontSize: 18,
-    lineHeight: 23,
-
-    fontWeight: '900',
-
-    marginTop: 12,
   },
-
-
   waitingText: {
+    marginTop: 5,
+    textAlign: 'center',
     color: COLORS.muted,
-
+    fontFamily: FONTS.medium,
     fontSize: 14,
     lineHeight: 20,
-
-    textAlign: 'center',
-
-    marginTop: 5,
   },
-
-
   testNote: {
-    color: '#9A5B00',
-
+    marginTop: 8,
+    textAlign: 'center',
+    color: COLORS.amber,
+    fontFamily: FONTS.semibold,
     fontSize: 13,
     lineHeight: 18,
-
-    textAlign: 'center',
-
-    marginTop: 8,
   },
-
-
   errorRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-
     gap: 7,
-
     marginTop: 12,
   },
-
-
   errorText: {
     flex: 1,
-
-    color: COLORS.error,
-
+    color: COLORS.red,
+    fontFamily: FONTS.semibold,
     fontSize: 14,
     lineHeight: 20,
   },
-
-
   payButton: {
-    height: 52,
-
-    borderRadius: 26,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
     marginTop: 14,
   },
-
-
-  buttonDisabled: {
-    backgroundColor: '#9DBFEF',
-  },
-
-
-  payButtonText: {
-    color: COLORS.white,
-
-    fontSize: 16,
-    fontWeight: '800',
-  },
-
-
   cashButton: {
     height: 46,
-
+    marginTop: 6,
     alignItems: 'center',
     justifyContent: 'center',
-
-    marginTop: 6,
   },
-
-
   cashButtonText: {
-    color: '#0866DD',
-
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
     fontSize: 15,
-    fontWeight: '800',
   },
-
 });

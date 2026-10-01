@@ -17,12 +17,26 @@ import { StatusBar } from 'expo-status-bar';
 import { createAddress, getAddresses } from '../../../api/addresses';
 import { getBranches } from '../../../api/branches';
 import { ApiError } from '../../../api/client';
-import { createOrder } from '../../../api/orders';
+import { createOrder, getDeliveryEstimate } from '../../../api/orders';
 import { getProfile } from '../../../api/profile';
 import { getRewards } from '../../../api/rewards';
-import VanellaHeader from '../../../components/VanellaHeader';
+import BottomNav from '../../../components/BottomNav';
+import FormField from '../../../components/FormField';
+import PrimaryButton from '../../../components/PrimaryButton';
+import {
+  Card,
+  ErrorState,
+  IconTile,
+  LoadingState,
+  MpesaMark,
+  Pill,
+  RadioDot,
+  SectionLabel,
+  TopBar,
+} from '../../../components/ui';
 import { useCart } from '../../../context/CartContext';
 import { FREE_20L, HALF_OFF, getReward } from '../../../data/rewards';
+import { COLORS, FONTS } from '../../../theme';
 import { formatKes } from '../../../utils/format';
 import {
   LOCATION_DENIED,
@@ -34,16 +48,6 @@ import {
   hasCoordinates,
 } from '../../../utils/location';
 
-
-const COLORS = {
-  primary: '#087FF5',
-  background: '#F5F8FC',
-  white: '#FFFFFF',
-  text: '#082D6A',
-  muted: '#63738B',
-  border: '#E5EDF6',
-  error: '#C62828',
-};
 
 const NETWORK_ERROR =
   'Could not reach the server. Check your connection and try again.';
@@ -76,7 +80,8 @@ const formatDistance = (km) =>
   km < 1 ? `${Math.round(km * 1000)} m away` : `${km.toFixed(1)} km away`;
 
 
-// One selectable row with a radio circle, used for addresses and branches.
+// One selectable row with a radio circle, used for addresses, branches
+// and rewards.
 function OptionRow({ title, subtitle, tag, selected, disabled = false, onPress }) {
   return (
     <TouchableOpacity
@@ -91,31 +96,84 @@ function OptionRow({ title, subtitle, tag, selected, disabled = false, onPress }
       accessibilityRole="radio"
       accessibilityState={{ selected, disabled }}
     >
-      <View style={[styles.radio, selected && styles.radioSelected]}>
-        {selected && <View style={styles.radioDot} />}
-      </View>
+      <RadioDot selected={selected} />
 
       <View style={styles.optionText}>
         <View style={styles.optionTitleRow}>
-          <Text style={styles.optionTitle}>
-            {title}
-          </Text>
-
-          {tag ? (
-            <View style={styles.optionTag}>
-              <Text style={styles.optionTagText}>
-                {tag}
-              </Text>
-            </View>
-          ) : null}
+          <Text style={styles.optionTitle}>{title}</Text>
+          {tag ? <Pill label={tag} tone="ok" /> : null}
         </View>
 
-        {subtitle ? (
-          <Text style={styles.optionSubtitle}>
-            {subtitle}
-          </Text>
-        ) : null}
+        {subtitle ? <Text style={styles.optionSubtitle}>{subtitle}</Text> : null}
       </View>
+    </TouchableOpacity>
+  );
+}
+
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// "4:27 PM", or "Fri 8:45 AM" when it is not today.
+function formatTime(isoString) {
+  const date = new Date(isoString);
+  const hours = date.getHours() % 12 || 12;
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const time = `${hours}:${minutes} ${date.getHours() < 12 ? 'AM' : 'PM'}`;
+
+  return date.toDateString() === new Date().toDateString()
+    ? time
+    : `${DAYS[date.getDay()]} ${time}`;
+}
+
+
+// When the order will arrive if placed now. Outside delivery hours
+// (8 AM to 8 PM) it waits for the next morning.
+function DeliveryPromise({ estimate }) {
+  const minutes = Math.round((new Date(estimate.promised_by) - Date.now()) / 60000);
+
+  return (
+    <View style={[styles.promise, estimate.is_scheduled && styles.promiseScheduled]}>
+      <Ionicons
+        name={estimate.is_scheduled ? 'moon' : 'time'}
+        size={20}
+        color={estimate.is_scheduled ? COLORS.amber : COLORS.royal}
+      />
+
+      <View style={styles.promiseText}>
+        <Text style={styles.promiseTitle}>
+          {estimate.is_scheduled
+            ? `Delivered by ${formatTime(estimate.promised_by)}`
+            : `Arrives by ${formatTime(estimate.promised_by)}`}
+        </Text>
+        <Text style={styles.promiseSub}>
+          {estimate.is_scheduled
+            ? 'We deliver from 8 AM to 8 PM, so this goes out first thing in the morning.'
+            : `About ${minutes} minutes after you order.`}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+
+// M-Pesa or cash, shown as two tiles side by side.
+function PaymentTile({ title, subtitle, mark, selected, onPress }) {
+  return (
+    <TouchableOpacity
+      style={[styles.payTile, selected && styles.optionRowSelected]}
+      activeOpacity={0.8}
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={title}
+    >
+      <View style={styles.payTileTop}>
+        {mark}
+        <RadioDot selected={selected} />
+      </View>
+
+      <Text style={styles.payTileTitle}>{title}</Text>
+      <Text style={styles.optionSubtitle}>{subtitle}</Text>
     </TouchableOpacity>
   );
 }
@@ -137,6 +195,9 @@ export default function CheckoutScreen({ navigation }) {
   // The 9 digits after +254 that the M-Pesa request is sent to.
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [loadError, setLoadError] = useState('');
+
+  // { promised_by, is_scheduled } for an order placed now.
+  const [estimate, setEstimate] = useState(null);
 
   // Where to deliver: CURRENT_LOCATION or a saved address id.
   const [choice, setChoice] = useState(CURRENT_LOCATION);
@@ -196,13 +257,16 @@ export default function CheckoutScreen({ navigation }) {
     setLoadError('');
 
     try {
-      const [addressData, branchData, rewardData, profile] =
+      const [addressData, branchData, rewardData, profile, estimateData] =
         await Promise.all([
           getAddresses(),
           getBranches(),
           getRewards(),
           getProfile(),
+          getDeliveryEstimate(hasBulk),
         ]);
+
+      setEstimate(estimateData);
 
       // M-Pesa defaults to the number the customer registered with.
       setMpesaPhone(profile.phone_number.slice(3));
@@ -213,7 +277,7 @@ export default function CheckoutScreen({ navigation }) {
     } catch (err) {
       handleApiError(err, setLoadError);
     }
-  }, [handleApiError]);
+  }, [handleApiError, hasBulk]);
 
 
   const runDetectLocation = useCallback(async () => {
@@ -433,68 +497,35 @@ export default function CheckoutScreen({ navigation }) {
 
   const renderContent = () => {
     if (addresses === null) {
-      if (loadError) {
-        return (
-          <View style={styles.centered}>
-            <Ionicons
-              name="cloud-offline-outline"
-              size={44}
-              color={COLORS.muted}
-            />
-
-            <Text style={styles.centeredText}>
-              {loadError}
-            </Text>
-
-            <TouchableOpacity
-              style={styles.centeredButton}
-              activeOpacity={0.85}
-              onPress={loadOptions}
-            >
-              <Text style={styles.centeredButtonText}>
-                Try Again
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-
-      return (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
+      return loadError ? (
+        <ErrorState message={loadError} onRetry={loadOptions} />
+      ) : (
+        <LoadingState />
       );
     }
 
     return (
       <ScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
 
-        <Text style={styles.pageTitle}>
-          Checkout
-        </Text>
+        {/* =====================================
+            WHEN IT ARRIVES
+        ===================================== */}
+
+        {estimate ? <DeliveryPromise estimate={estimate} /> : null}
 
 
         {/* =====================================
-            DELIVERY ADDRESS
+            DELIVER TO
         ===================================== */}
 
-        <View style={styles.card}>
+        <SectionLabel>DELIVER TO</SectionLabel>
 
-          <View style={styles.cardHeader}>
-            <Ionicons name="location" size={21} color="#0869E8" />
-
-            <Text style={styles.cardTitle}>
-              Deliver to
-            </Text>
-          </View>
-
-          {/* DETECTED LOCATION */}
-
+        <Card style={styles.section}>
           <OptionRow
             title="Current location"
             subtitle={
@@ -512,18 +543,23 @@ export default function CheckoutScreen({ navigation }) {
             }}
           />
 
+          {location.status === LOCATION_DETECTING ? (
+            <View style={styles.detectingRow}>
+              <ActivityIndicator size="small" color={COLORS.royal} />
+              <Text style={styles.helpText}>Finding where you are…</Text>
+            </View>
+          ) : null}
+
           {locationUnavailable ? (
             <View style={styles.locationHelp}>
-              <Text style={styles.locationHelpText}>
+              <Text style={styles.helpText}>
                 {location.status === LOCATION_DENIED
-                  ? 'Allow location for this app in your phone settings to use it, or choose a saved address.'
+                  ? 'Allow location for this app in your phone settings, or choose a saved address.'
                   : 'Make sure location is on, or choose a saved address.'}
               </Text>
 
-              <TouchableOpacity onPress={retryLocation}>
-                <Text style={styles.linkText}>
-                  Try again
-                </Text>
+              <TouchableOpacity onPress={retryLocation} accessibilityRole="button">
+                <Text style={styles.linkText}>Try again</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -542,9 +578,10 @@ export default function CheckoutScreen({ navigation }) {
                   setCurrentConfirmed(false);
                 }}
                 placeholder="Estate, building, house or landmark"
-                placeholderTextColor="#8DA5C2"
+                placeholderTextColor="#8193B0"
                 maxLength={255}
                 multiline
+                accessibilityLabel="Delivery address"
               />
 
               <Text style={styles.confirmHint}>
@@ -553,42 +590,23 @@ export default function CheckoutScreen({ navigation }) {
 
               {currentConfirmed ? (
                 <View style={styles.confirmedRow}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color="#19A65B"
-                  />
-
-                  <Text style={styles.confirmedText}>
-                    Address confirmed
-                  </Text>
+                  <Ionicons name="checkmark-circle" size={20} color={COLORS.ok} />
+                  <Text style={styles.confirmedText}>Address confirmed</Text>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={[
-                    styles.saveAddressButton,
-                    currentLine.length < 2 && styles.buttonDisabled,
-                  ]}
-                  activeOpacity={0.85}
-                  disabled={currentLine.length < 2}
+                <PrimaryButton
+                  title="Confirm address"
                   onPress={() => setCurrentConfirmed(true)}
-                >
-                  <Text style={styles.saveAddressText}>
-                    Confirm Address
-                  </Text>
-                </TouchableOpacity>
+                  disabled={currentLine.length < 2}
+                  style={styles.smallButton}
+                />
               )}
             </View>
           ) : null}
 
-
-          {/* SAVED ADDRESSES */}
-
           {addresses.length > 0 ? (
             <View>
-              <Text style={styles.subheading}>
-                Saved addresses
-              </Text>
+              <Text style={styles.subheading}>Saved addresses</Text>
 
               {addresses.map((address) => (
                 <OptionRow
@@ -602,56 +620,38 @@ export default function CheckoutScreen({ navigation }) {
             </View>
           ) : locationUnavailable ? (
             <View>
-              <Text style={styles.cardHint}>
+              <Text style={styles.helpText}>
                 You have no saved delivery address. Add one to continue.
               </Text>
 
               <TextInput
-                style={styles.addressInput}
+                style={[styles.confirmInput, styles.newAddressInput]}
                 value={newAddress}
                 onChangeText={setNewAddress}
                 placeholder="Estate, building, house or landmark"
-                placeholderTextColor="#8DA5C2"
+                placeholderTextColor="#8193B0"
+                accessibilityLabel="New delivery address"
               />
 
-              <TouchableOpacity
-                style={[
-                  styles.saveAddressButton,
-                  (newAddress.trim().length < 2 || savingAddress) &&
-                    styles.buttonDisabled,
-                ]}
-                activeOpacity={0.85}
-                disabled={newAddress.trim().length < 2 || savingAddress}
+              <PrimaryButton
+                title="Save address"
                 onPress={handleSaveAddress}
-              >
-                {savingAddress ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.saveAddressText}>
-                    Save Address
-                  </Text>
-                )}
-              </TouchableOpacity>
+                disabled={newAddress.trim().length < 2}
+                loading={savingAddress}
+                style={styles.smallButton}
+              />
             </View>
           ) : null}
-
-        </View>
+        </Card>
 
 
         {/* =====================================
             BRANCH
         ===================================== */}
 
-        <View style={styles.card}>
+        <SectionLabel>FROM BRANCH</SectionLabel>
 
-          <View style={styles.cardHeader}>
-            <Ionicons name="storefront" size={20} color="#0869E8" />
-
-            <Text style={styles.cardTitle}>
-              Order from
-            </Text>
-          </View>
-
+        <View style={styles.section} accessibilityRole="radiogroup">
           {branches.map((branch) => (
             <OptionRow
               key={branch.id}
@@ -666,7 +666,6 @@ export default function CheckoutScreen({ navigation }) {
               onPress={() => chooseBranch(branch.id)}
             />
           ))}
-
         </View>
 
 
@@ -675,65 +674,91 @@ export default function CheckoutScreen({ navigation }) {
         ===================================== */}
 
         {rewards.length > 0 ? (
-          <View style={styles.card}>
+          <>
+            <SectionLabel>USE A REWARD</SectionLabel>
 
-            <View style={styles.cardHeader}>
-              <Ionicons name="gift" size={20} color="#0869E8" />
+            <View style={styles.section}>
+              {rewards.map((reward) => {
+                const details = getReward(reward.reward_type);
+                const needsBulk = reward.reward_type === HALF_OFF && !hasBulk;
+                const selected = reward.id === rewardId;
 
-              <Text style={styles.cardTitle}>
-                Use a reward
+                return (
+                  <OptionRow
+                    key={reward.id}
+                    title={details ? details.title : reward.reward_type}
+                    subtitle={
+                      needsBulk
+                        ? 'Only for orders with 6,000L or 10,000L water'
+                        : details?.description
+                    }
+                    selected={selected}
+                    disabled={needsBulk}
+                    onPress={() => setRewardId(selected ? null : reward.id)}
+                  />
+                );
+              })}
+
+              <Text style={styles.footnote}>
+                Optional. Tap a selected reward again to remove it.
               </Text>
             </View>
-
-            {rewards.map((reward) => {
-              const details = getReward(reward.reward_type);
-              const needsBulk = reward.reward_type === HALF_OFF && !hasBulk;
-              const selected = reward.id === rewardId;
-
-              return (
-                <OptionRow
-                  key={reward.id}
-                  title={details ? details.title : reward.reward_type}
-                  subtitle={
-                    needsBulk
-                      ? 'Only for orders with 6,000L or 10,000L water'
-                      : details?.description
-                  }
-                  selected={selected}
-                  disabled={needsBulk}
-                  onPress={() => setRewardId(selected ? null : reward.id)}
-                />
-              );
-            })}
-
-            <Text style={styles.cardFootnote}>
-              Optional. Tap a selected reward again to remove it.
-            </Text>
-
-          </View>
+          </>
         ) : null}
+
+
+        {/* =====================================
+            PAYMENT
+        ===================================== */}
+
+        <SectionLabel>PAY WITH</SectionLabel>
+
+        <View style={styles.section}>
+          <View style={styles.payRow} accessibilityRole="radiogroup">
+            <PaymentTile
+              title="M-Pesa"
+              subtitle="Pay now"
+              mark={<MpesaMark />}
+              selected={paymentMethod === MPESA}
+              onPress={() => setPaymentMethod(MPESA)}
+            />
+
+            <PaymentTile
+              title="Cash"
+              subtitle="On delivery"
+              mark={<IconTile name="wallet" tone="neutral" size={30} iconSize={17} />}
+              selected={paymentMethod === CASH}
+              onPress={() => setPaymentMethod(CASH)}
+            />
+          </View>
+
+          {paymentMethod === MPESA ? (
+            <FormField
+              label="M-Pesa number"
+              prefix="+254"
+              value={mpesaPhone}
+              onChangeText={(value) => setMpesaPhone(value.replace(/\D/g, ''))}
+              placeholder="7XX XXX XXX"
+              keyboardType="phone-pad"
+              maxLength={9}
+              style={styles.mpesaField}
+            />
+          ) : null}
+        </View>
 
 
         {/* =====================================
             ORDER SUMMARY
         ===================================== */}
 
-        <View style={styles.card}>
+        <SectionLabel>ORDER SUMMARY</SectionLabel>
 
-          <View style={styles.cardHeader}>
-            <Ionicons name="receipt" size={20} color="#0869E8" />
-
-            <Text style={styles.cardTitle}>
-              Order summary
-            </Text>
-          </View>
-
+        <Card style={styles.summary}>
           {items.map((item) => (
             <View key={item.id} style={styles.summaryRow}>
               <Text style={styles.summaryItem}>
                 {item.quantity} × {item.name.replace('\n', ' ')}
               </Text>
-
               <Text style={styles.summaryValue}>
                 {formatKes(item.price * item.quantity)}
               </Text>
@@ -742,841 +767,368 @@ export default function CheckoutScreen({ navigation }) {
 
           {addsFreeBottle ? (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryItem}>
-                1 × 20L Water (reward)
-              </Text>
-
-              <Text style={styles.freeDelivery}>
-                FREE
-              </Text>
+              <Text style={styles.summaryItem}>1 × 20L Water (reward)</Text>
+              <Text style={styles.freeText}>FREE</Text>
             </View>
           ) : null}
 
           {note.trim() ? (
-            <Text style={styles.noteText}>
-              Note: {note.trim()}
-            </Text>
+            <Text style={styles.noteText}>Note: {note.trim()}</Text>
           ) : null}
 
           <View style={styles.divider} />
 
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>
-              Subtotal
-            </Text>
-
-            <Text style={styles.summaryValue}>
-              {formatKes(subtotal)}
-            </Text>
+            <Text style={styles.summaryLabel}>Subtotal</Text>
+            <Text style={styles.summaryValue}>{formatKes(subtotal)}</Text>
           </View>
 
           {discount > 0 ? (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>
-                Reward discount
-              </Text>
-
-              <Text style={styles.freeDelivery}>
-                −{formatKes(discount)}
-              </Text>
+              <Text style={styles.summaryLabel}>Reward discount</Text>
+              <Text style={styles.freeText}>−{formatKes(discount)}</Text>
             </View>
           ) : null}
 
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>
-              Delivery Fee
-            </Text>
-
-            <Text style={styles.freeDelivery}>
-              FREE
-            </Text>
+            <Text style={styles.summaryLabel}>Delivery</Text>
+            <Text style={styles.freeText}>Free</Text>
           </View>
+        </Card>
 
-          <View style={styles.divider} />
-
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>
-              Total
-            </Text>
-
-            <Text style={styles.totalAmount}>
-              {formatKes(total)}
-            </Text>
-          </View>
-
-        </View>
-
-
-        {/* =====================================
-            PAYMENT
-        ===================================== */}
-
-        <View style={styles.card}>
-
-          <View style={styles.cardHeader}>
-            <Ionicons name="wallet" size={20} color="#0869E8" />
-
-            <Text style={styles.cardTitle}>
-              Pay with
-            </Text>
-          </View>
-
-          <OptionRow
-            title="M-Pesa"
-            subtitle="Pay now. A request is sent to your phone."
-            selected={paymentMethod === MPESA}
-            onPress={() => setPaymentMethod(MPESA)}
-          />
-
-          {paymentMethod === MPESA ? (
-            <View style={styles.confirmBox}>
-              <Text style={styles.confirmLabel}>
-                M-Pesa number
-              </Text>
-
-              <View style={styles.mpesaPhoneContainer}>
-                <Text style={styles.mpesaPrefix}>
-                  +254
-                </Text>
-
-                <View style={styles.mpesaDivider} />
-
-                <TextInput
-                  style={styles.mpesaPhoneInput}
-                  value={mpesaPhone}
-                  onChangeText={(value) =>
-                    setMpesaPhone(value.replace(/\D/g, ''))
-                  }
-                  placeholder="7XX XXX XXX"
-                  placeholderTextColor="#8DA5C2"
-                  keyboardType="phone-pad"
-                  maxLength={9}
-                />
-              </View>
-            </View>
-          ) : null}
-
-          <OptionRow
-            title="Cash on delivery"
-            subtitle="Pay when your water arrives."
-            selected={paymentMethod === CASH}
-            onPress={() => setPaymentMethod(CASH)}
-          />
-
-        </View>
-
-
-        {/* =====================================
-            PLACE ORDER
-        ===================================== */}
-
-        {error ? (
-          <Text style={styles.errorText}>
-            {error}
-          </Text>
-        ) : null}
-
-        {!error && usingCurrent && locationReady && !currentConfirmed ? (
-          <Text style={styles.hintText}>
-            Confirm your delivery address to place your order.
-          </Text>
-        ) : null}
-
-        {!error && deliveryReady && branchId === null ? (
-          <Text style={styles.hintText}>
-            Choose a branch to place your order.
-          </Text>
-        ) : null}
-
-        {!error && deliveryReady && branchId !== null && !paymentReady ? (
-          <Text style={styles.hintText}>
-            {paymentMethod === MPESA
-              ? 'Enter a valid M-Pesa number.'
-              : 'Choose how you want to pay.'}
-          </Text>
-        ) : null}
-
-        <TouchableOpacity
-          style={[styles.placeButton, !canPlace && styles.buttonDisabled]}
-          activeOpacity={0.85}
-          disabled={!canPlace}
-          onPress={handlePlaceOrder}
-        >
-          {placing ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.placeText}>
-              {paymentMethod === MPESA
-                ? `Pay ${formatKes(total)} with M-Pesa`
-                : 'Place Order'}
-            </Text>
-          )}
-        </TouchableOpacity>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       </ScrollView>
     );
   };
 
 
+  // What still stands between the customer and placing the order.
+  let hint = '';
+
+  if (addresses !== null && !error) {
+    if (usingCurrent && locationReady && !currentConfirmed) {
+      hint = 'Confirm your delivery address to continue.';
+    } else if (deliveryReady && branchId === null) {
+      hint = 'Choose a branch to continue.';
+    } else if (deliveryReady && branchId !== null && !paymentReady) {
+      hint =
+        paymentMethod === MPESA
+          ? 'Enter a valid M-Pesa number.'
+          : 'Choose how you want to pay.';
+    }
+  }
+
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      <VanellaHeader
-        onBack={() => navigation.goBack()}
-        pageBackground={COLORS.background}
-      />
+      <TopBar title="Checkout" onBack={() => navigation.goBack()} />
 
       {renderContent()}
 
+      {addresses !== null ? (
+        <View style={styles.actionBar}>
+          {hint ? (
+            <Text style={styles.hintText}>{hint}</Text>
+          ) : (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total · free delivery</Text>
+              <Text style={styles.totalValue}>{formatKes(total)}</Text>
+            </View>
+          )}
+
+          <PrimaryButton
+            title={paymentMethod === MPESA ? 'Pay with M-Pesa' : 'Place order'}
+            rightText={formatKes(total)}
+            onPress={handlePlaceOrder}
+            disabled={!canPlace && !placing}
+            loading={placing}
+          />
+        </View>
+      ) : null}
+
+      <BottomNav activeTab="home" navigation={navigation} />
     </SafeAreaView>
   );
 }
 
 
-/* =========================================
-   STYLES
-========================================= */
-
 const styles = StyleSheet.create({
-
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.ground,
   },
-
-
-  /* =======================================
-     MAIN CONTENT
-  ======================================= */
-
-  scrollView: {
+  scroll: {
     flex: 1,
   },
-
-
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 4,
-
-    paddingBottom: 35,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  section: {
+    marginBottom: 20,
+    gap: 8,
   },
 
-
-  pageTitle: {
-    color: COLORS.text,
-
-    fontSize: 29,
-    lineHeight: 35,
-
-    fontWeight: '900',
-
-    marginBottom: 17,
-  },
-
-
-  /* =======================================
-     LOADING / ERROR
-  ======================================= */
-
-  centered: {
-    flex: 1,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    paddingHorizontal: 36,
-  },
-
-
-  centeredText: {
-    color: COLORS.muted,
-
-    fontSize: 15,
-    lineHeight: 22,
-
-    textAlign: 'center',
-
-    marginTop: 10,
-  },
-
-
-  centeredButton: {
-    height: 48,
-
-    paddingHorizontal: 30,
-
-    borderRadius: 24,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginTop: 20,
-  },
-
-
-  centeredButtonText: {
-    color: COLORS.white,
-
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-
-  /* =======================================
-     CARDS
-  ======================================= */
-
-  card: {
-    backgroundColor: COLORS.white,
-
-    borderRadius: 18,
-
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-
-    marginBottom: 13,
-
-    shadowColor: '#163A6D',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-
-    elevation: 1,
-  },
-
-
-  cardHeader: {
+  /* Delivery promise */
+  promise: {
     flexDirection: 'row',
     alignItems: 'center',
-
-    gap: 9,
-
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 18,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: COLORS.tint,
   },
-
-
-  cardTitle: {
-    color: COLORS.text,
-
-    fontSize: 17,
-    lineHeight: 22,
-
-    fontWeight: '900',
+  promiseScheduled: {
+    backgroundColor: COLORS.amberBg,
   },
-
-
-  cardFootnote: {
+  promiseText: {
+    flex: 1,
+  },
+  promiseTitle: {
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 15,
+  },
+  promiseSub: {
+    marginTop: 2,
     color: COLORS.muted,
-
+    fontFamily: FONTS.medium,
     fontSize: 12,
     lineHeight: 17,
-
-    marginTop: 2,
   },
 
-
-  cardHint: {
-    color: COLORS.muted,
-
-    fontSize: 14,
-    lineHeight: 20,
-
-    marginBottom: 10,
-  },
-
-
-  /* =======================================
-     OPTION ROWS
-  ======================================= */
-
+  /* Option rows */
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-
-    borderWidth: 1.4,
-    borderColor: COLORS.border,
-
-    borderRadius: 14,
-
+    gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-
-    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
   },
-
-
   optionRowSelected: {
-    borderColor: COLORS.primary,
-
-    backgroundColor: '#F1F8FF',
+    borderColor: COLORS.royal,
+    backgroundColor: '#F4F7FF',
   },
-
-
   optionRowDisabled: {
     opacity: 0.5,
   },
-
-
-  radio: {
-    width: 22,
-    height: 22,
-
-    borderRadius: 11,
-
-    borderWidth: 2,
-    borderColor: '#B6C6D8',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginRight: 12,
-  },
-
-
-  radioSelected: {
-    borderColor: COLORS.primary,
-  },
-
-
-  radioDot: {
-    width: 10,
-    height: 10,
-
-    borderRadius: 5,
-
-    backgroundColor: COLORS.primary,
-  },
-
-
   optionText: {
     flex: 1,
   },
-
-
   optionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-
     gap: 8,
   },
-
-
   optionTitle: {
-    color: COLORS.text,
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '800',
+    color: COLORS.ink,
+    fontFamily: FONTS.bold,
+    fontSize: 14,
   },
-
-
-  optionTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-
-    borderRadius: 9,
-
-    backgroundColor: '#DFF5E6',
-  },
-
-
-  optionTagText: {
-    color: '#19703A',
-
-    fontSize: 11,
-    lineHeight: 15,
-
-    fontWeight: '800',
-  },
-
-
-  /* =======================================
-     DETECTED LOCATION
-  ======================================= */
-
-  locationHelp: {
-    marginBottom: 10,
-  },
-
-
-  locationHelpText: {
+  optionSubtitle: {
+    marginTop: 2,
     color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 12,
+    lineHeight: 17,
+  },
 
+  /* Detected location */
+  detectingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  locationHelp: {
+    gap: 2,
+  },
+  helpText: {
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
     fontSize: 13,
     lineHeight: 19,
   },
-
-
   linkText: {
-    color: COLORS.primary,
-
+    color: COLORS.royal,
+    fontFamily: FONTS.extrabold,
     fontSize: 14,
-    lineHeight: 20,
-
-    fontWeight: '800',
-
-    marginTop: 4,
+    lineHeight: 22,
   },
-
-
   confirmBox: {
-    marginBottom: 12,
+    gap: 6,
   },
-
-
   confirmLabel: {
-    color: COLORS.text,
-
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
     fontSize: 14,
-    lineHeight: 19,
-
-    fontWeight: '800',
-
-    marginBottom: 7,
   },
-
-
   confirmInput: {
     minHeight: 52,
-
-    borderWidth: 1.4,
-    borderColor: '#D5E4F1',
-
-    borderRadius: 14,
-
-    backgroundColor: '#FCFEFF',
-
-    paddingHorizontal: 15,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-
-    color: COLORS.text,
-
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
+    color: COLORS.ink,
+    fontFamily: FONTS.medium,
     fontSize: 15,
     lineHeight: 20,
   },
-
-
+  newAddressInput: {
+    marginTop: 8,
+  },
   confirmHint: {
     color: COLORS.muted,
-
+    fontFamily: FONTS.medium,
     fontSize: 12,
     lineHeight: 17,
-
-    marginTop: 5,
   },
-
-
   confirmedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-
     gap: 6,
-
-    marginTop: 10,
+    marginTop: 4,
   },
-
-
   confirmedText: {
-    color: '#19703A',
-
+    color: COLORS.ok,
+    fontFamily: FONTS.extrabold,
     fontSize: 14,
-    lineHeight: 19,
-
-    fontWeight: '800',
+  },
+  smallButton: {
+    height: 48,
+    marginTop: 6,
+  },
+  subheading: {
+    marginTop: 6,
+    marginBottom: 8,
+    color: COLORS.muted,
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+  },
+  footnote: {
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 12,
   },
 
-
-  mpesaPhoneContainer: {
-    height: 52,
-
+  /* Payment */
+  payRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  payTile: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    backgroundColor: COLORS.surface,
+  },
+  payTileTop: {
     flexDirection: 'row',
     alignItems: 'center',
-
-    borderWidth: 1.4,
-    borderColor: '#D5E4F1',
-
-    borderRadius: 14,
-
-    backgroundColor: '#FCFEFF',
-
-    paddingHorizontal: 15,
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  payTileTitle: {
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 14,
+  },
+  mpesaField: {
+    marginTop: 6,
   },
 
-
-  mpesaPrefix: {
-    color: COLORS.text,
-
-    fontSize: 15,
-    fontWeight: '800',
-
-    paddingRight: 13,
+  /* Summary */
+  summary: {
+    gap: 10,
   },
-
-
-  mpesaDivider: {
-    width: 1,
-    height: 26,
-
-    backgroundColor: '#D8E5EF',
-  },
-
-
-  mpesaPhoneInput: {
-    flex: 1,
-
-    paddingHorizontal: 13,
-
-    color: COLORS.text,
-
-    fontSize: 15,
-  },
-
-
-  subheading: {
-    color: COLORS.muted,
-
-    fontSize: 13,
-    lineHeight: 18,
-
-    fontWeight: '700',
-
-    marginTop: 2,
-    marginBottom: 8,
-  },
-
-
-  optionSubtitle: {
-    color: COLORS.muted,
-
-    fontSize: 13,
-    lineHeight: 18,
-
-    marginTop: 1,
-  },
-
-
-  /* =======================================
-     ADD ADDRESS
-  ======================================= */
-
-  addressInput: {
-    height: 52,
-
-    borderWidth: 1.4,
-    borderColor: '#D5E4F1',
-
-    borderRadius: 14,
-
-    backgroundColor: '#FCFEFF',
-
-    paddingHorizontal: 15,
-
-    color: COLORS.text,
-
-    fontSize: 15,
-  },
-
-
-  saveAddressButton: {
-    height: 46,
-
-    borderRadius: 23,
-
-    backgroundColor: '#0866DD',
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    marginTop: 10,
-  },
-
-
-  saveAddressText: {
-    color: COLORS.white,
-
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-
-  /* =======================================
-     SUMMARY
-  ======================================= */
-
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-
-    marginBottom: 9,
+    gap: 10,
   },
-
-
   summaryItem: {
     flex: 1,
-
-    color: '#173B6D',
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '500',
-
-    marginRight: 10,
+    color: COLORS.ink,
+    fontFamily: FONTS.medium,
+    fontSize: 14,
   },
-
-
   summaryLabel: {
-    color: '#173B6D',
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '500',
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    fontSize: 14,
   },
-
-
   summaryValue: {
-    color: COLORS.text,
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '900',
+    color: COLORS.ink,
+    fontFamily: FONTS.bold,
+    fontSize: 14,
   },
-
-
+  freeText: {
+    color: COLORS.ok,
+    fontFamily: FONTS.extrabold,
+    fontSize: 14,
+  },
   noteText: {
     color: COLORS.muted,
-
-    fontSize: 13,
-    lineHeight: 19,
-
+    fontFamily: FONTS.medium,
     fontStyle: 'italic',
-
-    marginTop: 2,
+    fontSize: 13,
   },
-
-
-  freeDelivery: {
-    color: COLORS.primary,
-
-    fontSize: 15,
-    lineHeight: 20,
-
-    fontWeight: '900',
-  },
-
-
   divider: {
     height: 1,
-
-    backgroundColor: '#E1E9F2',
-
-    marginTop: 4,
-    marginBottom: 12,
+    backgroundColor: COLORS.line,
+  },
+  errorText: {
+    marginTop: 14,
+    color: COLORS.red,
+    fontFamily: FONTS.semibold,
+    fontSize: 14,
+    lineHeight: 20,
   },
 
-
+  /* Action bar */
+  actionBar: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
+    backgroundColor: COLORS.surface,
+  },
+  hintText: {
+    marginBottom: 8,
+    textAlign: 'center',
+    color: COLORS.muted,
+    fontFamily: FONTS.semibold,
+    fontSize: 13,
+  },
   totalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 8,
   },
-
-
   totalLabel: {
-    color: COLORS.text,
-
-    fontSize: 20,
-    lineHeight: 25,
-
-    fontWeight: '900',
-  },
-
-
-  totalAmount: {
-    color: '#0864D9',
-
-    fontSize: 26,
-    lineHeight: 31,
-
-    fontWeight: '900',
-  },
-
-
-  /* =======================================
-     PLACE ORDER
-  ======================================= */
-
-  errorText: {
-    color: COLORS.error,
-
-    fontSize: 14,
-    lineHeight: 20,
-
-    marginBottom: 10,
-  },
-
-
-  hintText: {
     color: COLORS.muted,
-
-    fontSize: 14,
-    lineHeight: 20,
-
-    textAlign: 'center',
-
-    marginBottom: 10,
+    fontFamily: FONTS.medium,
+    fontSize: 13,
   },
-
-
-  placeButton: {
-    height: 61,
-
-    backgroundColor: '#0866DD',
-
-    borderRadius: 31,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    shadowColor: '#0866DD',
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 9,
-
-    elevation: 4,
+  totalValue: {
+    color: COLORS.ink,
+    fontFamily: FONTS.extrabold,
+    fontSize: 15,
   },
-
-
-  buttonDisabled: {
-    backgroundColor: '#9DBFEF',
-
-    shadowOpacity: 0,
-
-    elevation: 0,
-  },
-
-
-  placeText: {
-    color: COLORS.white,
-
-    fontSize: 18,
-    lineHeight: 23,
-
-    fontWeight: '800',
-  },
-
 });

@@ -24,6 +24,7 @@ class PaymentResponse(BaseModel):
     status: str
 
     phone_number: str
+    shortcode: str | None
     mpesa_receipt: str | None
 
     # Ready-to-show text describing the current status.

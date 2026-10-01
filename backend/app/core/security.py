@@ -12,14 +12,22 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 
-def create_access_token(customer_id: UUID) -> str:
+# Tokens issued before roles existed carry no "role"; they are customers.
+ROLE_CUSTOMER = "customer"
+
+PASSWORD_HASH_ITERATIONS = 600_000
+
+
+def create_access_token(subject_id: UUID, role: str = ROLE_CUSTOMER) -> str:
+    """`subject_id` is a customer id, or a team user id for other roles."""
 
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=ACCESS_TOKEN_EXPIRE_MINUTES
     )
 
     payload = {
-        "sub": str(customer_id),
+        "sub": str(subject_id),
+        "role": role,
         "type": "access",
         "exp": expire,
     }
@@ -31,7 +39,8 @@ def create_access_token(customer_id: UUID) -> str:
     )
 
 
-def decode_access_token(token: str) -> UUID | None:
+def decode_access_token(token: str) -> tuple[UUID, str] | None:
+    """Returns (subject id, role), or None if the token is not valid."""
 
     try:
         payload = jwt.decode(
@@ -45,12 +54,48 @@ def decode_access_token(token: str) -> UUID | None:
     if payload.get("type") != "access":
         return None
 
-    customer_id = payload.get("sub")
+    subject = payload.get("sub")
 
-    if customer_id is None:
+    if subject is None:
         return None
 
-    return UUID(customer_id)
+    try:
+        subject_id = UUID(subject)
+    except ValueError:
+        return None
+
+    return subject_id, payload.get("role", ROLE_CUSTOMER)
+
+
+def hash_password(password: str) -> str:
+    """Salted PBKDF2-SHA256, stored as "pbkdf2_sha256$iterations$salt$hash"."""
+
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt.encode(), PASSWORD_HASH_ITERATIONS
+    ).hex()
+
+    return f"pbkdf2_sha256${PASSWORD_HASH_ITERATIONS}${salt}${digest}"
+
+
+def verify_password(password: str, stored: str | None) -> bool:
+
+    if not stored:
+        return False
+
+    try:
+        algorithm, iterations, salt, digest = stored.split("$")
+    except ValueError:
+        return False
+
+    if algorithm != "pbkdf2_sha256":
+        return False
+
+    candidate = hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt.encode(), int(iterations)
+    ).hex()
+
+    return secrets.compare_digest(candidate, digest)
 
 
 def generate_refresh_token() -> str:

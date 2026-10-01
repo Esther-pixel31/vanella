@@ -17,10 +17,19 @@ class RefreshToken(Base):
         default=uuid.uuid4,
     )
 
-    customer_id: Mapped[uuid.UUID] = mapped_column(
+    # Exactly one of customer_id / user_id is set (database check constraint).
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("customers.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+
+    # A team account (admin, staff or driver).
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
 
