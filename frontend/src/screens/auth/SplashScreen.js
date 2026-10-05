@@ -4,8 +4,9 @@ import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
-import { getRefreshToken } from '../../api/client';
+import { getRefreshToken, getRole } from '../../api/client';
 import BottleGlow from '../../components/BottleGlow';
+import { homeRouteFor } from '../../navigation/roles';
 import { COLORS, FONTS } from '../../theme';
 
 // How long the splash shows before moving on.
@@ -73,17 +74,20 @@ export default function SplashScreen({ navigation }) {
     floating.start();
 
     const timer = setTimeout(async () => {
-      // A saved refresh token means the customer has logged in before.
-      // If it has expired, the home screen sends them back to Welcome.
-      let signedIn = false;
+      // A saved refresh token means someone has logged in on this phone
+      // before; their role decides which home opens. If the login has
+      // expired, that screen sends them back to Welcome.
+      let route = 'Welcome';
 
       try {
-        signedIn = Boolean(await getRefreshToken());
+        if (await getRefreshToken()) {
+          route = homeRouteFor(await getRole());
+        }
       } catch (err) {
         // Treat an unreadable token store as signed out.
       }
 
-      navigation.replace(signedIn ? 'CustomerHome' : 'Welcome');
+      navigation.replace(route);
     }, SPLASH_MS);
 
     return () => {

@@ -121,6 +121,7 @@ export default function OtpScreen({ navigation, route }) {
       await setTokens({
         accessToken: result.access_token,
         refreshToken: result.refresh_token,
+        role: 'customer',
       });
 
       if (result.is_new_customer && deliveryLocation) {

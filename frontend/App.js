@@ -26,6 +26,17 @@ import OrderTrackingScreen from './src/screens/customer/orders/OrderTrackingScre
 import ProfileScreen from './src/screens/customer/profile/ProfileScreen';
 import RewardsScreen from './src/screens/customer/rewards/RewardsScreen';
 import NotificationsScreen from './src/screens/customer/notifications/NotificationsScreen';
+import TeamLoginScreen from './src/screens/auth/TeamLoginScreen';
+import TeamAccountScreen from './src/screens/team/TeamAccountScreen';
+import StaffHomeScreen from './src/screens/staff/StaffHomeScreen';
+import StaffOrderScreen from './src/screens/staff/StaffOrderScreen';
+import DriverHomeScreen from './src/screens/driver/DriverHomeScreen';
+import DriverDeliveryScreen from './src/screens/driver/DriverDeliveryScreen';
+import DriverDoneScreen from './src/screens/driver/DriverDoneScreen';
+import AdminHomeScreen from './src/screens/admin/AdminHomeScreen';
+import AdminTeamScreen from './src/screens/admin/AdminTeamScreen';
+import AdminMemberScreen from './src/screens/admin/AdminMemberScreen';
+import AdminMemberFormScreen from './src/screens/admin/AdminMemberFormScreen';
 import { CartProvider } from './src/context/CartContext';
 
 const Stack = createNativeStackNavigator();
@@ -69,6 +80,19 @@ export default function App() {
             <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen name="Rewards" component={RewardsScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
+
+            {/* Team: staff, drivers and admins */}
+            <Stack.Screen name="TeamLogin" component={TeamLoginScreen} />
+            <Stack.Screen name="TeamAccount" component={TeamAccountScreen} />
+            <Stack.Screen name="StaffHome" component={StaffHomeScreen} />
+            <Stack.Screen name="StaffOrder" component={StaffOrderScreen} />
+            <Stack.Screen name="DriverHome" component={DriverHomeScreen} />
+            <Stack.Screen name="DriverDelivery" component={DriverDeliveryScreen} />
+            <Stack.Screen name="DriverDone" component={DriverDoneScreen} />
+            <Stack.Screen name="AdminHome" component={AdminHomeScreen} />
+            <Stack.Screen name="AdminTeam" component={AdminTeamScreen} />
+            <Stack.Screen name="AdminMember" component={AdminMemberScreen} />
+            <Stack.Screen name="AdminMemberForm" component={AdminMemberFormScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </CartProvider>

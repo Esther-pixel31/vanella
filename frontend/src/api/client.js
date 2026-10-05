@@ -4,6 +4,9 @@ import { API_BASE_URL } from './config';
 const ACCESS_TOKEN_KEY = 'vanella_access_token';
 const REFRESH_TOKEN_KEY = 'vanella_refresh_token';
 
+// "customer", "staff", "driver" or "admin": decides which screens open.
+const ROLE_KEY = 'vanella_role';
+
 export async function getAccessToken() {
   return SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
 }
@@ -12,14 +15,25 @@ export async function getRefreshToken() {
   return SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
 }
 
-export async function setTokens({ accessToken, refreshToken }) {
+// `role` is only given at login; a token refresh keeps the stored one.
+export async function setTokens({ accessToken, refreshToken, role }) {
   await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
   await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+
+  if (role) {
+    await SecureStore.setItemAsync(ROLE_KEY, role);
+  }
+}
+
+// Phones that logged in before roles existed are customers.
+export async function getRole() {
+  return (await SecureStore.getItemAsync(ROLE_KEY)) || 'customer';
 }
 
 export async function clearTokens() {
   await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
   await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+  await SecureStore.deleteItemAsync(ROLE_KEY);
 }
 
 export class ApiError extends Error {

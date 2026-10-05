@@ -47,6 +47,14 @@ export default function WelcomeScreen({ navigation }) {
           >
             <Text style={styles.loginText}>Log in</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.staffLink}
+            onPress={() => navigation.navigate('TeamLogin')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.staffLinkText}>Vanella staff or driver? Sign in here</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -114,5 +122,16 @@ const styles = StyleSheet.create({
     color: COLORS.surface,
     fontFamily: FONTS.extrabold,
     fontSize: 16,
+  },
+  staffLink: {
+    height: 44,
+    marginTop: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  staffLinkText: {
+    color: COLORS.sky,
+    fontFamily: FONTS.bold,
+    fontSize: 13,
   },
 });
